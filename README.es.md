@@ -86,7 +86,7 @@ Temas (parámetro `theme`):
 | `lowerthird` | Barra a todo el ancho estilo televisión, con el usuario en una etiqueta roja |
 | `ocean` | Tarjeta con degradado azul |
 
-**Marquesina** (`marquee=1`): el mensaje pasa en una sola línea de derecha a izquierda, como un rótulo de noticias. El nombre del usuario se queda fijo a la izquierda. El texto sigue pasando mientras se lee y desaparece cuando ha salido del todo de la pantalla.
+**Marquesina** (`marquee=1`): el mensaje pasa en una sola línea de derecha a izquierda, como un rótulo de noticias. El nombre del usuario se queda fijo a la izquierda. El texto aparece primero quieto, empieza a moverse al segundo, sigue pasando mientras se lee (volviendo a entrar por la derecha) y desaparece cuando ha salido del todo de la pantalla.
 
 Parámetros opcionales en la URL:
 

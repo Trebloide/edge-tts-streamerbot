@@ -119,6 +119,17 @@
   let scrolling = false, endPass = null;  // marquesina: sigue moviéndose hasta que el texto sale
 
   const elapsed = () => (pausedAt ?? performance.now()) - start;
+  const WAIT = 1;  // segundos que el texto se queda quieto al empezar
+
+  // Primera pasada: aparece pegado a la izquierda y sale por la izquierda.
+  // Si sigue leyéndose, las siguientes entran por la derecha.
+  function scrollPos() {
+    const w = textEl.offsetWidth, span = view.clientWidth + w;
+    const travel = Math.max(0, elapsed() / 1000 - WAIT) * speed;
+    if (travel <= w) return {x: -travel, pass: 0};
+    const r = travel - w;
+    return {x: view.clientWidth - r % span, pass: 1 + Math.floor(r / span)};
+  }
 
   function render() {
     if (playing) {
@@ -128,11 +139,9 @@
       restEl.textContent = text.slice(end);
     }
     if (scrolling) {
-      const span = view.clientWidth + textEl.offsetWidth;
-      const travel = elapsed() / 1000 * speed;
-      const pass = Math.floor(travel / span);
+      const {x, pass} = scrollPos();
       if (endPass === null || pass <= endPass) {
-        textEl.style.transform = `translateX(${view.clientWidth - travel % span}px)`;
+        textEl.style.transform = `translateX(${x}px)`;
       } else {
         scrolling = false;
         card.classList.remove("show");
@@ -147,7 +156,7 @@
       text = msg.text; marks = msg.marks || []; start = performance.now(); pausedAt = null; playing = true;
       userEl.textContent = msg.user || "";
       scrolling = marquee; endPass = null;
-      if (marquee) textEl.style.transform = `translateX(${view.clientWidth}px)`;
+      if (marquee) textEl.style.transform = "none";
       card.classList.add("show");
     } else if (msg.type === "pause" && pausedAt === null) {
       pausedAt = performance.now();
@@ -159,7 +168,7 @@
       if (marquee) {
         // si se saltó estando en pausa, que siga moviéndose hasta salir
         if (pausedAt !== null) { start += performance.now() - pausedAt; pausedAt = null; }
-        endPass = Math.floor(elapsed() / 1000 * speed / (view.clientWidth + textEl.offsetWidth));
+        endPass = scrollPos().pass;
       } else {
         hideTimer = setTimeout(() => card.classList.remove("show"), hold);
       }

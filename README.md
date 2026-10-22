@@ -86,7 +86,7 @@ Themes (`theme` parameter):
 | `lowerthird` | Full-width TV-style bar with the user name as a red tag |
 | `ocean` | Blue gradient card |
 
-**Marquee** (`marquee=1`): the message runs on one line from right to left, like a news ticker. The user name stays fixed on the left. The text keeps scrolling while it is being read, and disappears once it has fully left the screen.
+**Marquee** (`marquee=1`): the message runs on one line from right to left, like a news ticker. The user name stays fixed on the left. The text first appears still, starts moving after one second, keeps scrolling while it is being read (entering again from the right), and disappears once it has fully left the screen.
 
 Optional URL parameters:
 
