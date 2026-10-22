@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 import zlib
 from collections import deque
 from pathlib import Path
@@ -37,6 +38,7 @@ RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 CONFIG_PATH = APP_DIR / "config.json"
 ICON_PATH = RES_DIR / "icon.ico"
 OVERLAY_PATH = RES_DIR / "overlay.html"
+REPO_URL = "https://github.com/Trebloide/edge-tts-streamerbot"
 
 # ---------------------------------------------------------------- idiomas
 
@@ -259,6 +261,34 @@ ES = {
     "🚫 Ignore user": "🚫 Ignorar usuario",
     "⏭ Skip current": "⏭ Saltar actual",
     "Del removes the selection": "Supr quita la selección",
+    # pestaña ayuda
+    "Help": "Ayuda",
+    "Quick start": "Primeros pasos",
+    "1. In Streamer.bot: Servers/Clients → WebSocket Server, enable it and start it.\n"
+    "2. Connection tab: same port (and password if you enabled authentication), then Connect.\n"
+    "3. Pick a voice in Voices and press ▶ Listen. Chat is read automatically.\n"
+    "4. Optional: import the files from the streamerbot folder (!tts, channel points, bits/Kicks, "
+    "mod commands).\n\n"
+    "Shortcuts: Ctrl+P pause · Ctrl+S skip · Ctrl+Q queue":
+        "1. En Streamer.bot: Servers/Clients → WebSocket Server, actívalo y arráncalo.\n"
+        "2. Pestaña Conexión: el mismo puerto (y contraseña si activaste la autenticación) y luego Conectar.\n"
+        "3. Elige una voz en Voces y pulsa ▶ Escuchar. El chat se lee solo.\n"
+        "4. Opcional: importa los archivos de la carpeta streamerbot (!tts, puntos del canal, bits/Kicks, "
+        "comandos de mods).\n\n"
+        "Atajos: Ctrl+P pausa · Ctrl+S saltar · Ctrl+Q cola",
+    "Credits": "Créditos",
+    "Stream TTS · created by Trebloide": "Stream TTS · creado por Trebloide",
+    "© 2026 Trebloide · MIT license": "© 2026 Trebloide · licencia MIT",
+    "Built with:": "Hecho con:",
+    "edge-tts by rany2 (voices) · pygame (audio) · aiohttp (WebSocket and HTTP)\n"
+    "pystray and Pillow (system tray) · PyInstaller (.exe) · Streamer.bot\n"
+    "The voices belong to Microsoft (Edge Read Aloud service). Not affiliated with Microsoft, "
+    "Twitch, Kick or Streamer.bot.":
+        "edge-tts de rany2 (voces) · pygame (audio) · aiohttp (WebSocket y HTTP)\n"
+        "pystray y Pillow (bandeja del sistema) · PyInstaller (.exe) · Streamer.bot\n"
+        "Las voces son de Microsoft (servicio Leer en voz alta de Edge). Sin relación con Microsoft, "
+        "Twitch, Kick ni Streamer.bot.",
+    "GitHub repository": "Repositorio en GitHub",
 }
 
 
@@ -1059,6 +1089,7 @@ class App:
         self._tab_filters(self.nb)
         self._tab_connection(self.nb)
         self._tab_advanced(self.nb)
+        self._tab_help(self.nb)
         self.apply_theme()
         self.refresh_devices()
         if self.voices:
@@ -1651,6 +1682,39 @@ class App:
         ttk.Label(tts, style="Hint.TLabel", justify="left", text=tr(
             "Speed, pitch and voice gain are on the Main tab. The proxy is also used to download the voice list.")
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
+    # --- pestaña ayuda
+    def _tab_help(self, nb):
+        f = ttk.Frame(nb, padding=10)
+        nb.add(f, text=tr("Help"))
+
+        hp = ttk.LabelFrame(f, text=tr("Quick start"), padding=8)
+        hp.pack(fill="x")
+        ttk.Label(hp, justify="left", text=tr(
+            "1. In Streamer.bot: Servers/Clients → WebSocket Server, enable it and start it.\n"
+            "2. Connection tab: same port (and password if you enabled authentication), then Connect.\n"
+            "3. Pick a voice in Voices and press ▶ Listen. Chat is read automatically.\n"
+            "4. Optional: import the files from the streamerbot folder (!tts, channel points, bits/Kicks, "
+            "mod commands).\n\n"
+            "Shortcuts: Ctrl+P pause · Ctrl+S skip · Ctrl+Q queue")).pack(anchor="w")
+
+        cr = ttk.LabelFrame(f, text=tr("Credits"), padding=8)
+        cr.pack(fill="x", pady=10)
+        ttk.Label(cr, style="Title.TLabel", text=tr("Stream TTS · created by Trebloide")).pack(anchor="w")
+        ttk.Label(cr, style="Hint.TLabel", text=tr("© 2026 Trebloide · MIT license")).pack(anchor="w")
+        ttk.Label(cr, justify="left", text=tr("Built with:")).pack(anchor="w", pady=(8, 0))
+        ttk.Label(cr, justify="left", text=tr(
+            "edge-tts by rany2 (voices) · pygame (audio) · aiohttp (WebSocket and HTTP)\n"
+            "pystray and Pillow (system tray) · PyInstaller (.exe) · Streamer.bot\n"
+            "The voices belong to Microsoft (Edge Read Aloud service). Not affiliated with Microsoft, "
+            "Twitch, Kick or Streamer.bot.")).pack(anchor="w", pady=(2, 8))
+        links = ttk.Frame(cr)
+        links.pack(anchor="w")
+        readme = "README.md" if LANG == "en" else "README.es.md"
+        for text, url in (("Trebloide", "https://github.com/Trebloide"), (tr("GitHub repository"), REPO_URL),
+("README", f"{REPO_URL}/blob/main/{readme}"),
+                          ("edge-tts", "https://github.com/rany2/edge-tts")):
+            ttk.Button(links, text=text, command=lambda u=url: webbrowser.open(u)).pack(side="left", padx=(0, 4))
 
     def pick_now_file(self):
         path = filedialog.asksaveasfilename(parent=self.root, defaultextension=".txt",
