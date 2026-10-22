@@ -21,8 +21,10 @@ La configuración se guarda sola en `config.json`.
 
 Con eso la app lee directamente el chat de Twitch y el de Kick (eventos `Twitch.ChatMessage` y `Kick.ChatMessage`). No hace falta crear ninguna acción.
 
+- **Puedes usar Twitch y Kick a la vez.** Los dos vienen activados por defecto. Los mensajes de los dos chats van a una sola cola y suenan en el orden en que llegan.
 - Kick necesita Streamer.bot 1.0 o posterior, con tu cuenta de Kick conectada en Streamer.bot.
 - Para leer solo una plataforma, desmarca **Leer chat de Twitch** o **Leer chat de Kick** en la pestaña **Conexión**.
+- Los usuarios se reconocen por el nombre, no por la plataforma. Un usuario con el mismo nombre en Twitch y en Kick tiene la misma voz asignada y los mismos filtros.
 
 ## Acciones de Streamer.bot: !tts, puntos del canal, bits y Kicks (opcional)
 
@@ -45,6 +47,8 @@ La carpeta [`streamerbot/`](streamerbot/) trae seis archivos listos para importa
 | [`tts-kick-kicks.txt`](streamerbot/tts-kick-kicks.txt) | El mensaje que acompaña a los Kicks | Kick → Kicks → Gifted | Ajusta `minKicks` (por defecto `100`). |
 
 Las acciones de Kick necesitan Streamer.bot 1.0.2 o posterior.
+
+Puedes importar a la vez los archivos de Twitch y los de Kick. Los dos comandos `!tts` no chocan: uno escucha el chat de Twitch y el otro el de Kick.
 
 ### Importar
 
