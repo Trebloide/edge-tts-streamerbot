@@ -137,7 +137,7 @@ You can trigger the control URLs from a hotkey action or a Stream Deck button.
 ## Testing
 
 ```
-py test_tts_twitch.py
+py test_stream_tts.py
 ```
 
 ## Credits

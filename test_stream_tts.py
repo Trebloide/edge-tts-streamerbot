@@ -1,10 +1,10 @@
-"""Comprobaciones del procesado de mensajes. Ejecutar: py test_tts_twitch.py"""
+"""Comprobaciones del procesado de mensajes. Ejecutar: py test_stream_tts.py"""
 import json
 import tempfile
 from pathlib import Path
 
-import tts_twitch
-from tts_twitch import DEFAULTS, chat_speech, http_speech
+import stream_tts
+from stream_tts import DEFAULTS, chat_speech, http_speech
 
 cfg = dict(DEFAULTS, template="{user} dice: {message}", link_text="enlace", replacements="xd=equis de",
            user_voices="pepe=es-MX-JorgeNeural")
@@ -76,20 +76,20 @@ assert http_speech(cfg, "hola", voice="en-US-AvaNeural") == ("hola", "en-US-AvaN
 assert http_speech(cfg, "   ")[2] == "empty message"
 
 # traducción al español
-tts_twitch.LANG = "es"
+stream_tts.LANG = "es"
 assert chat_speech(cfg, msg1("!comando"))[3] == "comando"
 assert chat_speech(dict(cfg, blocked_words="feo"), msg1("feo"))[3] == "palabra bloqueada 'feo'"
-assert tts_twitch.tr("Queued: {n}", n=3) == "En cola: 3"
-tts_twitch.LANG = "en"
-assert tts_twitch.tr("Queued: {n}", n=3) == "Queued: 3"
+assert stream_tts.tr("Queued: {n}", n=3) == "En cola: 3"
+stream_tts.LANG = "en"
+assert stream_tts.tr("Queued: {n}", n=3) == "Queued: 3"
 
 # las configuraciones antiguas (valores en español) se migran a los códigos nuevos
 with tempfile.TemporaryDirectory() as d:
-    tts_twitch.CONFIG_PATH = Path(d) / "config.json"
-    tts_twitch.CONFIG_PATH.write_text(json.dumps({"min_role": "Suscriptores", "theme": "Oscuro",
+    stream_tts.CONFIG_PATH = Path(d) / "config.json"
+    stream_tts.CONFIG_PATH.write_text(json.dumps({"min_role": "Suscriptores", "theme": "Oscuro",
                                                   "device": "Predeterminado del sistema", "boundary": "Ninguno",
                                                   "template": "{user} dice: {message}"}), encoding="utf-8")
-    old = tts_twitch.load_config()
+    old = stream_tts.load_config()
     assert (old["min_role"], old["theme"], old["device"], old["boundary"]) == ("subs", "dark", "", "none")
     assert old["template"] == "{user} dice: {message}" and old["language"] == "en"
 print("OK")

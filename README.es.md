@@ -129,7 +129,7 @@ Para los controles puedes usar una acción con atajo de teclado o un botón del 
 ## Comprobar
 
 ```
-py test_tts_twitch.py
+py test_stream_tts.py
 ```
 
 ## Créditos
