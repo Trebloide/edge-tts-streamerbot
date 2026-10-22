@@ -107,10 +107,18 @@ ES = {
     "Reply in chat (needs the Streamer.bot password)": "Responder en el chat (necesita la contraseña de Streamer.bot)",
     "Only your favorite voices. Example: !voice dalia · !voice off": "Solo tus voces favoritas. Ejemplo: !voz dalia · !voz off",
     "OBS overlay": "Overlay de OBS",
-    "Add it in OBS as a Browser source (for example 800×300). Optional URL parameters:\n"
-    "size (font px), hold (seconds visible after reading).":
-        "Añádelo en OBS como fuente de Navegador (por ejemplo 800×300). Parámetros opcionales en la URL:\n"
-        "size (tamaño de letra en px), hold (segundos visible al terminar).",
+    "OBS Browser source, e.g. 800×300 (marquee 1920×100). More URL options: size, hold, speed.":
+        "Fuente de Navegador en OBS, p. ej. 800×300 (marquesina 1920×100). Más opciones en la URL: "
+        "size, hold, speed.",
+    "Marquee (one line scrolling right to left)": "Marquesina (una línea que pasa de derecha a izquierda)",
+    "Default (purple)": "Predeterminado (morado)",
+    "Retro green (gaming)": "Retro verde (gaming)",
+    "Minimal (text only)": "Mínimo (solo texto)",
+    "Glass": "Cristal",
+    "Outline": "Contorno",
+    "Chat bubble": "Bocadillo",
+    "Lower third": "Rótulo inferior",
+    "Ocean blue": "Azul océano",
     "Close to the system tray (keep reading in the background)":
         "Cerrar a la bandeja del sistema (sigue leyendo en segundo plano)",
     "Show window": "Mostrar ventana",
@@ -303,6 +311,9 @@ ROLES = {"all": 0, "subs": 1, "vip": 2, "mods": 3, "broadcaster": 4}
 ROLE_LABELS = {"all": "Everyone", "subs": "Subscribers", "vip": "VIP", "mods": "Moderators",
                "broadcaster": "Broadcaster only"}
 THEME_LABELS = {"dark": "Dark", "light": "Light"}
+OVERLAY_THEMES = {"default": "Default (purple)", "retro": "Retro green (gaming)", "light": "Light",
+                  "dark": "Dark", "minimal": "Minimal (text only)", "glass": "Glass", "outline": "Outline",
+                  "bubble": "Chat bubble", "lowerthird": "Lower third", "ocean": "Ocean blue"}
 BOUNDARY_LABELS = {"SentenceBoundary": "Per sentence", "WordBoundary": "Per word", "none": "None"}
 # Configuraciones guardadas por versiones anteriores, que usaban los textos en español
 LEGACY = {
@@ -336,6 +347,8 @@ DEFAULTS = {
     # Servidor HTTP para acciones de Streamer.bot (Fetch URL)
     "http_enabled": True,
     "http_port": 7979,
+    "overlay_theme": "default",
+    "overlay_marquee": False,
     # Filtros
     "template": "{user} says: {message}",
     "skip_repeat_name": True,
@@ -1060,7 +1073,9 @@ class App:
         self.queue_status = tk.StringVar()
         self.pause_text = tk.StringVar()
         self.url_speak, self.url_ctl, self.url_overlay = tk.StringVar(), tk.StringVar(), tk.StringVar()
-        self.var("http_port").trace_add("write", self.update_urls)
+        for key in ("http_port", "overlay_theme", "overlay_marquee"):
+            # after_idle: Tk ejecuta las trazas en orden inverso y cfg aún no tiene el valor nuevo
+            self.var(key).trace_add("write", lambda *_: self.root.after_idle(self.update_urls))
         self.build()
         root.deiconify()
         self.tray = self._start_tray()
@@ -1631,17 +1646,22 @@ class App:
         ov = ttk.LabelFrame(f, text=tr("OBS overlay"), padding=8)
         ov.pack(fill="x")
         ov.columnconfigure(1, weight=1)
-        self.row(ov, 0, "URL", ttk.Entry(ov, textvariable=self.url_overlay, state="readonly"))
-        ttk.Label(ov, style="Hint.TLabel", justify="left", text=tr(
-            "Add it in OBS as a Browser source (for example 800×300). Optional URL parameters:\n"
-            "size (font px), hold (seconds visible after reading).")
-        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        look = ttk.Frame(ov)
+        self.choice(look, "overlay_theme", OVERLAY_THEMES, width=22).pack(side="left")
+        ttk.Checkbutton(look, text=tr("Marquee (one line scrolling right to left)"),
+                        variable=self.var("overlay_marquee")).pack(side="left", padx=12)
+        self.row(ov, 0, tr("Theme"), look)
+        self.row(ov, 1, "URL", ttk.Entry(ov, textvariable=self.url_overlay, state="readonly"))
+        ttk.Label(ov, style="Hint.TLabel", text=tr(
+            "OBS Browser source, e.g. 800×300 (marquee 1920×100). More URL options: size, hold, speed.")
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
     def update_urls(self, *_):
         base = f"http://127.0.0.1:{self.cfg['http_port']}"
         self.url_speak.set(f"{base}/speak?user=%user%&text=%rawInputUrlEncoded%")
         self.url_ctl.set(f"{base}/skip  ·  /clear  ·  /pause  ·  /resume  ·  /toggle")
-        self.url_overlay.set(f"{base}/overlay")
+        url = f"{base}/overlay?theme={self.cfg['overlay_theme']}"
+        self.url_overlay.set(url + "&marquee=1" if self.cfg["overlay_marquee"] else url)
 
     # --- pestaña avanzado
     def _tab_advanced(self, nb):

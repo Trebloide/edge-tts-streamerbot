@@ -11,48 +11,132 @@
     --text: #ffffff;
     --dim: rgba(255, 255, 255, 0.45);
     --card: rgba(18, 18, 22, 0.82);
+    --font: "Segoe UI", system-ui, sans-serif;
+    --glow: 0 1px 2px rgba(0, 0, 0, 0.6);
   }
   html, body { margin: 0; background: transparent; overflow: hidden; }
   body {
     height: 100vh; display: flex; align-items: flex-end; padding: 16px; box-sizing: border-box;
-    font: 600 var(--size)/1.35 "Segoe UI", system-ui, sans-serif;
+    font: 600 var(--size)/1.35 var(--font);
   }
   #card {
-    max-width: 100%; padding: 0.55em 0.8em 0.65em; border-radius: 0.5em; background: var(--card);
+    position: relative; max-width: 100%; box-sizing: border-box; padding: 0.55em 0.8em 0.65em;
+    border-radius: 0.5em; background: var(--card);
     border-left: 0.18em solid var(--accent); box-shadow: 0 0.3em 1.2em rgba(0, 0, 0, 0.35);
     opacity: 0; transform: translateY(0.4em); transition: opacity 0.25s ease, transform 0.25s ease;
   }
   #card.show { opacity: 1; transform: none; }
   #user { color: var(--accent); font-size: 0.6em; letter-spacing: 0.04em; text-transform: uppercase; }
   #user:empty { display: none; }
-  #text { color: var(--dim); overflow-wrap: anywhere; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+  #text { color: var(--dim); overflow-wrap: anywhere; text-shadow: var(--glow); }
   #spoken { color: var(--text); }
+
+  /* Marquesina: una sola línea a lo ancho que se desplaza de derecha a izquierda */
+  .marquee #card { width: 100%; display: flex; align-items: center; gap: 0.6em; white-space: nowrap; }
+  .marquee #user { flex: none; }
+  .marquee #view { flex: 1; overflow: hidden; }
+  .marquee #text { display: inline-block; overflow-wrap: normal; will-change: transform; }
+
+  /* --- Temas (?theme=) --- */
+  .theme-light {
+    --accent: #7c3aed; --text: #16161a; --dim: rgba(22, 22, 26, 0.4); --card: rgba(255, 255, 255, 0.93);
+    --glow: none;
+  }
+  .theme-dark { --accent: #9a9aa4; --card: rgba(8, 8, 10, 0.95); }
+  .theme-dark #card { border-left: 0; border-radius: 0.2em; }
+  .theme-minimal {
+    --accent: #ffd54a; --dim: rgba(255, 255, 255, 0.6);
+    --glow: 0 0 3px #000, 0 0 3px #000, 2px 2px 0 #000;
+  }
+  .theme-minimal #card { background: none; border: 0; box-shadow: none; padding: 0; }
+  .theme-minimal #user { text-shadow: var(--glow); }
+  .theme-glass { --accent: #e6e6ff; --dim: rgba(255, 255, 255, 0.55); --card: rgba(255, 255, 255, 0.12); }
+  .theme-glass #card {
+    border: 1px solid rgba(255, 255, 255, 0.28); border-radius: 1em; backdrop-filter: blur(14px);
+  }
+  .theme-outline { --card: rgba(0, 0, 0, 0.25); --accent: #ffffff; --glow: 0 2px 4px rgba(0, 0, 0, 0.8); }
+  .theme-outline #card { border: 0.08em solid var(--accent); box-shadow: none; border-radius: 0.35em; }
+  .theme-bubble { --accent: #8ab4ff; --card: rgba(44, 46, 56, 0.95); }
+  .theme-bubble #card { border-left: 0; border-radius: 1.1em; }
+  .theme-bubble:not(.marquee) #card::after {
+    content: ""; position: absolute; left: 1.2em; bottom: -0.45em;
+    border: 0.5em solid transparent; border-top-color: var(--card); border-bottom: 0;
+  }
+  .theme-lowerthird { --accent: #e5484d; --card: linear-gradient(90deg, rgba(16, 16, 22, 0.94), rgba(16, 16, 22, 0.7)); }
+  .theme-lowerthird #card { width: 100%; border-left: 0; border-top: 0.1em solid var(--accent); border-radius: 0; }
+  .theme-lowerthird #user {
+    display: inline-block; margin-bottom: 0.3em; padding: 0.15em 0.55em; border-radius: 0.2em;
+    background: var(--accent); color: #fff;
+  }
+  .theme-lowerthird.marquee #user { margin-bottom: 0; }
+  .theme-ocean { --accent: #4fd1ff; --dim: rgba(220, 245, 255, 0.5); --card: linear-gradient(135deg, rgba(15, 32, 39, 0.92), rgba(44, 83, 100, 0.92)); }
+  .theme-ocean #card { border-left: 0; border-radius: 0.7em; }
+
+  /* Retro verde: terminal CRT con líneas de barrido, brillo y cursor */
+  .theme-retro {
+    --accent: #33ff66; --text: #66ff8c; --dim: rgba(51, 255, 102, 0.35); --card: rgba(0, 10, 2, 0.9);
+    --font: Consolas, "Lucida Console", "Courier New", monospace;
+    --glow: 0 0 4px rgba(51, 255, 102, 0.9), 0 0 12px rgba(51, 255, 102, 0.45);
+  }
+  .theme-retro body { font-weight: 700; }
+  .theme-retro #card {
+    border: 0.08em solid var(--accent); border-radius: 0.15em;
+    box-shadow: 0 0 0.6em rgba(51, 255, 102, 0.45), inset 0 0 1.2em rgba(51, 255, 102, 0.15);
+  }
+  .theme-retro #card::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(transparent 0 2px, rgba(0, 0, 0, 0.35) 2px 4px);
+  }
+  .theme-retro #user { text-shadow: var(--glow); }
+  .theme-retro #user::before { content: "> "; }
+  .theme-retro #spoken::after { content: "\2588"; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
 </style>
 </head>
 <body>
 <div id="card">
   <div id="user"></div>
-  <div id="text"><span id="spoken"></span><span id="rest"></span></div>
+  <div id="view"><div id="text"><span id="spoken"></span><span id="rest"></span></div></div>
 </div>
 <script>
   // Recibe del programa: start {user, text, marks: [[ms, fin_en_texto], ...]}, pause, resume, end.
+  // Parámetros: theme, marquee=1, speed (px/s de la marquesina), size, hold.
   const params = new URLSearchParams(location.search);
   const hold = Number(params.get("hold") ?? 2) * 1000;
+  const marquee = params.get("marquee") === "1";
+  const speed = Number(params.get("speed") || 180);
   if (params.get("size")) document.documentElement.style.setProperty("--size", params.get("size") + "px");
+  document.documentElement.classList.add("theme-" + (params.get("theme") || "default"));
+  if (marquee) document.documentElement.classList.add("marquee");
 
   const card = document.getElementById("card");
+  const view = document.getElementById("view");
+  const textEl = document.getElementById("text");
   const userEl = document.getElementById("user");
   const spokenEl = document.getElementById("spoken");
   const restEl = document.getElementById("rest");
   let text = "", marks = [], start = 0, pausedAt = null, hideTimer = null, playing = false;
+  let scrolling = false, endPass = null;  // marquesina: sigue moviéndose hasta que el texto sale
+
+  const elapsed = () => (pausedAt ?? performance.now()) - start;
 
   function render() {
     if (playing) {
-      const elapsed = (pausedAt ?? performance.now()) - start;
       let end = 0;
-      for (const [ms, pos] of marks) { if (ms <= elapsed) end = pos; else break; }
+      for (const [ms, pos] of marks) { if (ms <= elapsed()) end = pos; else break; }
       spokenEl.textContent = text.slice(0, end);
       restEl.textContent = text.slice(end);
+    }
+    if (scrolling) {
+      const span = view.clientWidth + textEl.offsetWidth;
+      const travel = elapsed() / 1000 * speed;
+      const pass = Math.floor(travel / span);
+      if (endPass === null || pass <= endPass) {
+        textEl.style.transform = `translateX(${view.clientWidth - travel % span}px)`;
+      } else {
+        scrolling = false;
+        card.classList.remove("show");
+      }
     }
     requestAnimationFrame(render);
   }
@@ -62,6 +146,8 @@
       clearTimeout(hideTimer);
       text = msg.text; marks = msg.marks || []; start = performance.now(); pausedAt = null; playing = true;
       userEl.textContent = msg.user || "";
+      scrolling = marquee; endPass = null;
+      if (marquee) textEl.style.transform = `translateX(${view.clientWidth}px)`;
       card.classList.add("show");
     } else if (msg.type === "pause" && pausedAt === null) {
       pausedAt = performance.now();
@@ -70,7 +156,13 @@
     } else if (msg.type === "end") {
       playing = false;
       spokenEl.textContent = text; restEl.textContent = "";
-      hideTimer = setTimeout(() => card.classList.remove("show"), hold);
+      if (marquee) {
+        // si se saltó estando en pausa, que siga moviéndose hasta salir
+        if (pausedAt !== null) { start += performance.now() - pausedAt; pausedAt = null; }
+        endPass = Math.floor(elapsed() / 1000 * speed / (view.clientWidth + textEl.offsetWidth));
+      } else {
+        hideTimer = setTimeout(() => card.classList.remove("show"), hold);
+      }
     }
   }
 
