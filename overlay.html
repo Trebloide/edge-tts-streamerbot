@@ -31,6 +31,14 @@
   #text { color: var(--dim); overflow-wrap: anywhere; text-shadow: var(--glow); }
   #spoken { color: var(--text); }
 
+  /* Posición (?pos=, ?align=), nombre (?user=0) y resaltado (?highlight=0) */
+  .pos-top body { align-items: flex-start; }
+  .pos-center body { align-items: center; }
+  .align-center:not(.marquee) body { justify-content: center; text-align: center; }
+  .align-right:not(.marquee) body { justify-content: flex-end; text-align: right; }
+  .no-user #user { display: none; }
+  .no-highlight #text { color: var(--text); }
+
   /* Marquesina: una sola línea a lo ancho que se desplaza de derecha a izquierda */
   .marquee #card { width: 100%; display: flex; align-items: center; gap: 0.6em; white-space: nowrap; }
   .marquee #user { flex: none; }
@@ -62,6 +70,8 @@
     content: ""; position: absolute; left: 1.2em; bottom: -0.45em;
     border: 0.5em solid transparent; border-top-color: var(--card); border-bottom: 0;
   }
+  .theme-bubble.align-center:not(.marquee) #card::after { left: calc(50% - 0.5em); }
+  .theme-bubble.align-right:not(.marquee) #card::after { left: auto; right: 1.2em; }
   .theme-lowerthird { --accent: #e5484d; --card: linear-gradient(90deg, rgba(16, 16, 22, 0.94), rgba(16, 16, 22, 0.7)); }
   .theme-lowerthird #card { width: 100%; border-left: 0; border-top: 0.1em solid var(--accent); border-radius: 0; }
   .theme-lowerthird #user {
@@ -100,14 +110,25 @@
 </div>
 <script>
   // Recibe del programa: start {user, text, marks: [[ms, fin_en_texto], ...]}, pause, resume, end.
-  // Parámetros: theme, marquee=1, speed (px/s de la marquesina), size, hold.
+  // Parámetros: theme, marquee=1, speed (px/s de la marquesina), wait, size, hold, pos, align, accent,
+  // user=0, highlight=0.
   const params = new URLSearchParams(location.search);
+  const root = document.documentElement;
   const hold = Number(params.get("hold") ?? 2) * 1000;
   const marquee = params.get("marquee") === "1";
   const speed = Number(params.get("speed") || 180);
-  if (params.get("size")) document.documentElement.style.setProperty("--size", params.get("size") + "px");
-  document.documentElement.classList.add("theme-" + (params.get("theme") || "default"));
-  if (marquee) document.documentElement.classList.add("marquee");
+  const WAIT = Number(params.get("wait") ?? 1) || 0;  // segundos que el texto se queda quieto al empezar
+  if (params.get("size")) root.style.setProperty("--size", params.get("size") + "px");
+  const accent = params.get("accent");
+  if (accent) {
+    const color = /^[0-9a-f]{3,8}$/i.test(accent) ? "#" + accent : accent;  // hex sin # o nombre CSS
+    if (CSS.supports("color", color)) root.style.setProperty("--accent", color);
+  }
+  root.classList.add("theme-" + (params.get("theme") || "default"),
+                     "pos-" + (params.get("pos") || "bottom"), "align-" + (params.get("align") || "left"));
+  if (marquee) root.classList.add("marquee");
+  if (params.get("user") === "0") root.classList.add("no-user");
+  if (params.get("highlight") === "0") root.classList.add("no-highlight");
 
   const card = document.getElementById("card");
   const view = document.getElementById("view");
@@ -119,7 +140,6 @@
   let scrolling = false, endPass = null;  // marquesina: sigue moviéndose hasta que el texto sale
 
   const elapsed = () => (pausedAt ?? performance.now()) - start;
-  const WAIT = 1;  // segundos que el texto se queda quieto al empezar
 
   // Primera pasada: aparece pegado a la izquierda y sale por la izquierda.
   // Si sigue leyéndose, las siguientes entran por la derecha.

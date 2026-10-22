@@ -68,8 +68,10 @@ Los viewers pueden elegir su voz desde el chat, solo entre tus voces **favoritas
 La app sirve una página que muestra el mensaje que se está leyendo y resalta cada palabra según suena.
 
 1. En OBS, añade una fuente de **Navegador**.
-2. URL: cópiala de la pestaña **Conexión** después de elegir allí el tema y si quieres marquesina. Por ejemplo `http://127.0.0.1:7979/overlay?theme=retro`.
+2. URL: configúrala en la pestaña **Overlay** (tema, tamaño del texto, color de acento, posición, marquesina, tiempos…) y pulsa **Copiar**. Por ejemplo `http://127.0.0.1:7979/overlay?theme=retro`.
 3. Tamaño: por ejemplo 800 × 300, o 1920 × 100 para la marquesina. El fondo es transparente.
+
+Los ajustes van en la URL. Después de cambiarlos, pega la URL nueva en OBS. Con **Abrir en el navegador** y **Enviar mensaje de prueba** puedes verlo antes.
 
 Temas (parámetro `theme`):
 
@@ -86,7 +88,7 @@ Temas (parámetro `theme`):
 | `lowerthird` | Barra a todo el ancho estilo televisión, con el usuario en una etiqueta roja |
 | `ocean` | Tarjeta con degradado azul |
 
-**Marquesina** (`marquee=1`): el mensaje pasa en una sola línea de derecha a izquierda, como un rótulo de noticias. El nombre del usuario se queda fijo a la izquierda. El texto aparece primero quieto, empieza a moverse al segundo, sigue pasando mientras se lee (volviendo a entrar por la derecha) y desaparece cuando ha salido del todo de la pantalla.
+**Marquesina** (`marquee=1`): el mensaje pasa en una sola línea de derecha a izquierda, como un rótulo de noticias. El nombre del usuario se queda fijo a la izquierda. El texto aparece primero quieto, empieza a moverse al segundo (`wait`), sigue pasando mientras se lee (volviendo a entrar por la derecha) y desaparece cuando ha salido del todo de la pantalla.
 
 Parámetros opcionales en la URL:
 
@@ -95,8 +97,14 @@ Parámetros opcionales en la URL:
 | `theme` | Aspecto del overlay (por defecto `default`) | `/overlay?theme=retro` |
 | `marquee` | `1` = una línea que se desplaza | `/overlay?marquee=1` |
 | `speed` | Velocidad de la marquesina en píxeles por segundo (por defecto `180`) | `/overlay?marquee=1&speed=120` |
+| `wait` | Segundos que la marquesina se queda quieta antes de moverse (por defecto `1`) | `/overlay?marquee=1&wait=0` |
 | `size` | Tamaño de letra en píxeles (por defecto `30`) | `/overlay?size=40` |
 | `hold` | Segundos que se queda el texto al terminar (por defecto `2`; la marquesina no lo usa) | `/overlay?hold=5` |
+| `pos` | Posición vertical: `bottom` (abajo, por defecto), `center` o `top` | `/overlay?pos=top` |
+| `align` | `left` (por defecto), `center` o `right` (la marquesina no lo usa) | `/overlay?align=center` |
+| `accent` | Color de acento en vez del del tema: hex sin `#` o nombre de color CSS | `/overlay?accent=ff4d4d` |
+| `user` | `0` = ocultar el nombre del usuario | `/overlay?user=0` |
+| `highlight` | `0` = mostrar todo el texto igual, sin resaltar las palabras ya leídas | `/overlay?highlight=0` |
 
 El overlay necesita el servidor HTTP, que viene activado.
 

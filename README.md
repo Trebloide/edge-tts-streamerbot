@@ -68,8 +68,10 @@ Viewers can pick their own voice from chat, from your **favorite** voices only:
 The app serves a page that shows the message being read, highlighting each word as it is spoken.
 
 1. In OBS, add a **Browser** source.
-2. URL: copy it from the **Connection** tab, after choosing the theme and the marquee option there. For example `http://127.0.0.1:7979/overlay?theme=retro`.
+2. URL: set it up in the **Overlay** tab (theme, text size, accent color, position, marquee, times…) and click **Copy**. For example `http://127.0.0.1:7979/overlay?theme=retro`.
 3. Size: for example 800 × 300, or 1920 × 100 for the marquee. The background is transparent.
+
+The settings go in the URL. After changing them, paste the new URL in OBS. **Open in browser** and **Send a test message** let you preview it first.
 
 Themes (`theme` parameter):
 
@@ -86,7 +88,7 @@ Themes (`theme` parameter):
 | `lowerthird` | Full-width TV-style bar with the user name as a red tag |
 | `ocean` | Blue gradient card |
 
-**Marquee** (`marquee=1`): the message runs on one line from right to left, like a news ticker. The user name stays fixed on the left. The text first appears still, starts moving after one second, keeps scrolling while it is being read (entering again from the right), and disappears once it has fully left the screen.
+**Marquee** (`marquee=1`): the message runs on one line from right to left, like a news ticker. The user name stays fixed on the left. The text first appears still, starts moving after one second (`wait`), keeps scrolling while it is being read (entering again from the right), and disappears once it has fully left the screen.
 
 Optional URL parameters:
 
@@ -95,8 +97,14 @@ Optional URL parameters:
 | `theme` | Look of the overlay (default `default`) | `/overlay?theme=retro` |
 | `marquee` | `1` = one scrolling line | `/overlay?marquee=1` |
 | `speed` | Marquee speed in pixels per second (default `180`) | `/overlay?marquee=1&speed=120` |
+| `wait` | Seconds the marquee stays still before moving (default `1`) | `/overlay?marquee=1&wait=0` |
 | `size` | Font size in pixels (default `30`) | `/overlay?size=40` |
 | `hold` | Seconds the text stays after reading (default `2`, not used by the marquee) | `/overlay?hold=5` |
+| `pos` | Vertical position: `bottom` (default), `center` or `top` | `/overlay?pos=top` |
+| `align` | `left` (default), `center` or `right` (not used by the marquee) | `/overlay?align=center` |
+| `accent` | Accent color instead of the theme's: hex without `#` or a CSS color name | `/overlay?accent=ff4d4d` |
+| `user` | `0` = hide the user name | `/overlay?user=0` |
+| `highlight` | `0` = show the whole text at once, without highlighting the words already read | `/overlay?highlight=0` |
 
 The overlay needs the HTTP server, which is on by default.
 

@@ -17,7 +17,8 @@ import webbrowser
 import zlib
 from collections import deque
 from pathlib import Path
-from tkinter import filedialog, simpledialog, ttk
+from tkinter import colorchooser, filedialog, simpledialog, ttk
+from urllib.parse import urlencode
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import aiohttp
@@ -106,10 +107,39 @@ ES = {
     "Viewers can choose their voice with": "Los viewers pueden elegir su voz con",
     "Reply in chat (needs the Streamer.bot password)": "Responder en el chat (necesita la contraseña de Streamer.bot)",
     "Only your favorite voices. Example: !voice dalia · !voice off": "Solo tus voces favoritas. Ejemplo: !voz dalia · !voz off",
-    "OBS overlay": "Overlay de OBS",
-    "OBS Browser source, e.g. 800×300 (marquee 1920×100). More URL options: size, hold, speed.":
-        "Fuente de Navegador en OBS, p. ej. 800×300 (marquesina 1920×100). Más opciones en la URL: "
-        "size, hold, speed.",
+    # pestaña overlay
+    "Look": "Aspecto",
+    "Text size (px)": "Tamaño del texto (px)",
+    "default 30": "por defecto 30",
+    "Pick…": "Elegir…",
+    "Accent color": "Color de acento",
+    "empty = the theme's color": "vacío = el color del tema",
+    "Vertical position": "Posición vertical",
+    "Alignment": "Alineación",
+    "not used by the marquee": "no se usa en la marquesina",
+    "Bottom": "Abajo",
+    "Center": "Centro",
+    "Top": "Arriba",
+    "Left": "Izquierda",
+    "Right": "Derecha",
+    "Show the user name": "Mostrar el nombre del usuario",
+    "Highlight the words already read": "Resaltar las palabras ya leídas",
+    "Timing": "Tiempos",
+    "Marquee speed (px/s)": "Velocidad de la marquesina (px/s)",
+    "default 180": "por defecto 180",
+    "Seconds still before scrolling": "Segundos quieta antes de moverse",
+    "default 1": "por defecto 1",
+    "Seconds on screen after reading": "Segundos en pantalla al acabar",
+    "default 2 · not used by the marquee": "por defecto 2 · no se usa en la marquesina",
+    "OBS Browser source": "Fuente de Navegador de OBS",
+    "📋 Copy": "📋 Copiar",
+    "Open in browser": "Abrir en el navegador",
+    "Send a test message": "Enviar mensaje de prueba",
+    "Hi chat, this is a test of the overlay.": "Hola chat, esto es una prueba del overlay.",
+    "Size of the source, e.g. 800×300 (marquee 1920×100).\n"
+    "The settings go in the URL: after changing them, paste the new URL in OBS.":
+        "Tamaño de la fuente, p. ej. 800×300 (marquesina 1920×100).\n"
+        "Los ajustes van en la URL: después de cambiarlos, pega la URL nueva en OBS.",
     "Marquee (one line scrolling right to left)": "Marquesina (una línea que pasa de derecha a izquierda)",
     "Default (purple)": "Predeterminado (morado)",
     "Retro green (gaming)": "Retro verde (gaming)",
@@ -314,6 +344,13 @@ THEME_LABELS = {"dark": "Dark", "light": "Light"}
 OVERLAY_THEMES = {"default": "Default (purple)", "retro": "Retro green (gaming)", "light": "Light",
                   "dark": "Dark", "minimal": "Minimal (text only)", "glass": "Glass", "outline": "Outline",
                   "bubble": "Chat bubble", "lowerthird": "Lower third", "ocean": "Ocean blue"}
+OVERLAY_POSITIONS = {"bottom": "Bottom", "center": "Center", "top": "Top"}
+OVERLAY_ALIGNS = {"left": "Left", "center": "Center", "right": "Right"}
+# Ajuste de la configuración → parámetro de la URL del overlay (el tema va siempre)
+OVERLAY_PARAMS = {"overlay_marquee": "marquee", "overlay_speed": "speed", "overlay_wait": "wait",
+                  "overlay_size": "size", "overlay_hold": "hold", "overlay_position": "pos",
+                  "overlay_align": "align", "overlay_accent": "accent", "overlay_user": "user",
+                  "overlay_highlight": "highlight"}
 BOUNDARY_LABELS = {"SentenceBoundary": "Per sentence", "WordBoundary": "Per word", "none": "None"}
 # Configuraciones guardadas por versiones anteriores, que usaban los textos en español
 LEGACY = {
@@ -347,8 +384,18 @@ DEFAULTS = {
     # Servidor HTTP para acciones de Streamer.bot (Fetch URL)
     "http_enabled": True,
     "http_port": 7979,
+    # Overlay de OBS (van en la URL)
     "overlay_theme": "default",
     "overlay_marquee": False,
+    "overlay_speed": 180,  # px/s de la marquesina
+    "overlay_wait": 1,  # segundos quieta la marquesina antes de moverse
+    "overlay_size": 30,  # px
+    "overlay_hold": 2,  # segundos en pantalla al acabar de leer (sin marquesina)
+    "overlay_position": "bottom",
+    "overlay_align": "left",
+    "overlay_accent": "",  # vacío = el color del tema
+    "overlay_user": True,
+    "overlay_highlight": True,
     # Filtros
     "template": "{user} says: {message}",
     "skip_repeat_name": True,
@@ -1073,7 +1120,7 @@ class App:
         self.queue_status = tk.StringVar()
         self.pause_text = tk.StringVar()
         self.url_speak, self.url_ctl, self.url_overlay = tk.StringVar(), tk.StringVar(), tk.StringVar()
-        for key in ("http_port", "overlay_theme", "overlay_marquee"):
+        for key in ("http_port", "overlay_theme", *OVERLAY_PARAMS):
             # after_idle: Tk ejecuta las trazas en orden inverso y cfg aún no tiene el valor nuevo
             self.var(key).trace_add("write", lambda *_: self.root.after_idle(self.update_urls))
         self.build()
@@ -1103,6 +1150,7 @@ class App:
         self._tab_voices(self.nb)
         self._tab_filters(self.nb)
         self._tab_connection(self.nb)
+        self._tab_overlay(self.nb)
         self._tab_advanced(self.nb)
         self._tab_help(self.nb)
         self.apply_theme()
@@ -1643,25 +1691,76 @@ class App:
             "The controls work with hotkeys or a Stream Deck. Only listens on 127.0.0.1 (this PC).")
         ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
-        ov = ttk.LabelFrame(f, text=tr("OBS overlay"), padding=8)
-        ov.pack(fill="x")
-        ov.columnconfigure(1, weight=1)
-        look = ttk.Frame(ov)
-        self.choice(look, "overlay_theme", OVERLAY_THEMES, width=22).pack(side="left")
-        ttk.Checkbutton(look, text=tr("Marquee (one line scrolling right to left)"),
-                        variable=self.var("overlay_marquee")).pack(side="left", padx=12)
-        self.row(ov, 0, tr("Theme"), look)
-        self.row(ov, 1, "URL", ttk.Entry(ov, textvariable=self.url_overlay, state="readonly"))
-        ttk.Label(ov, style="Hint.TLabel", text=tr(
-            "OBS Browser source, e.g. 800×300 (marquee 1920×100). More URL options: size, hold, speed.")
-        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
-
     def update_urls(self, *_):
         base = f"http://127.0.0.1:{self.cfg['http_port']}"
         self.url_speak.set(f"{base}/speak?user=%user%&text=%rawInputUrlEncoded%")
         self.url_ctl.set(f"{base}/skip  ·  /clear  ·  /pause  ·  /resume  ·  /toggle")
-        url = f"{base}/overlay?theme={self.cfg['overlay_theme']}"
-        self.url_overlay.set(url + "&marquee=1" if self.cfg["overlay_marquee"] else url)
+        # Solo lo que no está por defecto, para que la URL quede corta
+        params = {"theme": self.cfg["overlay_theme"]}
+        for key, name in OVERLAY_PARAMS.items():
+            val = self.cfg[key]
+            if val != DEFAULTS[key]:
+                params[name] = int(val) if isinstance(val, bool) else str(val).strip().lstrip("#")
+        self.url_overlay.set(f"{base}/overlay?{urlencode(params)}")
+
+    # --- pestaña overlay
+    def _tab_overlay(self, nb):
+        f = ttk.Frame(nb, padding=10)
+        nb.add(f, text="Overlay")
+
+        look = ttk.LabelFrame(f, text=tr("Look"), padding=8)
+        look.pack(fill="x")
+        look.columnconfigure(1, weight=1)
+        self.row(look, 0, tr("Theme"), self.choice(look, "overlay_theme", OVERLAY_THEMES))
+        self.row(look, 1, tr("Text size (px)"),
+                 ttk.Spinbox(look, from_=10, to=200, textvariable=self.var("overlay_size")), tr("default 30"))
+        color = ttk.Frame(look)
+        ttk.Entry(color, textvariable=self.var("overlay_accent")).pack(side="left", fill="x", expand=True)
+        ttk.Button(color, text=tr("Pick…"), command=self.pick_accent).pack(side="left", padx=(4, 0))
+        self.row(look, 2, tr("Accent color"), color, tr("empty = the theme's color"))
+        self.row(look, 3, tr("Vertical position"), self.choice(look, "overlay_position", OVERLAY_POSITIONS))
+        self.row(look, 4, tr("Alignment"), self.choice(look, "overlay_align", OVERLAY_ALIGNS),
+                 tr("not used by the marquee"))
+        self.row(look, 5, "", ttk.Checkbutton(look, text=tr("Show the user name"),
+                                              variable=self.var("overlay_user")))
+        self.row(look, 6, "", ttk.Checkbutton(look, text=tr("Highlight the words already read"),
+                                              variable=self.var("overlay_highlight")))
+
+        anim = ttk.LabelFrame(f, text=tr("Timing"), padding=8)
+        anim.pack(fill="x", pady=10)
+        anim.columnconfigure(1, weight=1)
+        self.row(anim, 0, "", ttk.Checkbutton(anim, text=tr("Marquee (one line scrolling right to left)"),
+                                              variable=self.var("overlay_marquee")))
+        self.row(anim, 1, tr("Marquee speed (px/s)"), ttk.Spinbox(
+            anim, from_=20, to=2000, increment=10, textvariable=self.var("overlay_speed")), tr("default 180"))
+        self.row(anim, 2, tr("Seconds still before scrolling"), ttk.Spinbox(
+            anim, from_=0, to=10, textvariable=self.var("overlay_wait")), tr("default 1"))
+        self.row(anim, 3, tr("Seconds on screen after reading"), ttk.Spinbox(
+            anim, from_=0, to=60, textvariable=self.var("overlay_hold")), tr("default 2 · not used by the marquee"))
+
+        obs = ttk.LabelFrame(f, text=tr("OBS Browser source"), padding=8)
+        obs.pack(fill="x")
+        obs.columnconfigure(1, weight=1)
+        self.row(obs, 0, "URL", ttk.Entry(obs, textvariable=self.url_overlay, state="readonly"))
+        btns = ttk.Frame(obs)
+        ttk.Button(btns, text=tr("📋 Copy"), command=lambda: (
+            self.root.clipboard_clear(), self.root.clipboard_append(self.url_overlay.get()))).pack(side="left")
+        ttk.Button(btns, text=tr("Open in browser"),
+                   command=lambda: webbrowser.open(self.url_overlay.get())).pack(side="left", padx=4)
+        ttk.Button(btns, text=tr("Send a test message"), command=lambda: self.engine.speak(
+            tr("Hi chat, this is a test of the overlay."), user="Stream TTS")).pack(side="left")
+        self.row(obs, 1, "", btns)
+        ttk.Label(obs, style="Hint.TLabel", justify="left", text=tr(
+            "Size of the source, e.g. 800×300 (marquee 1920×100).\n"
+            "The settings go in the URL: after changing them, paste the new URL in OBS.")
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
+
+    def pick_accent(self):
+        cur = self.cfg["overlay_accent"].strip()
+        cur = cur if re.fullmatch(r"#[0-9a-fA-F]{6}", cur) else "#a970ff"
+        color = colorchooser.askcolor(cur, parent=self.root, title=tr("Accent color"))[1]
+        if color:
+            self.var("overlay_accent").set(color)
 
     # --- pestaña avanzado
     def _tab_advanced(self, nb):
