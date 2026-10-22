@@ -26,28 +26,74 @@ Con eso la app lee directamente el chat de Twitch y el de Kick (eventos `Twitch.
 
 ## Acciones de Streamer.bot: !tts, puntos del canal, bits y Kicks (opcional)
 
-La carpeta `streamerbot/` trae seis archivos listos para importar. Van por separado, así que importa solo los que quieras:
+La carpeta [`streamerbot/`](streamerbot/) trae seis archivos listos para importar. Van por separado, así que importa solo los que quieras.
 
-| Archivo | Acción | Después de importar |
-|---|---|---|
-| `tts-twitch-command.txt` | Comando `!tts <texto>` en el chat de Twitch | No hay que hacer nada. |
-| `tts-twitch-channel-points.txt` | Lee el texto de un canje de puntos de Twitch | Edita el trigger y elige tu recompensa. La recompensa debe pedir texto al viewer. |
-| `tts-twitch-bits.txt` | Lee los mensajes con bits de Twitch | Cambia el argumento `minBits` (por defecto `100`) para fijar el mínimo de bits. |
-| `tts-kick-command.txt` | Comando `!tts <texto>` en el chat de Kick | No hay que hacer nada. |
-| `tts-kick-channel-points.txt` | Lee el texto de un canje de puntos de Kick | Edita el trigger y elige tu recompensa. La recompensa debe pedir texto al viewer. |
-| `tts-kick-kicks.txt` | Lee el mensaje que acompaña a los Kicks | Cambia el argumento `minKicks` (por defecto `100`) para fijar el mínimo de Kicks. |
+### Twitch
 
-Para importar un archivo:
+| Archivo | Qué lee | Trigger | Después de importar |
+|---|---|---|---|
+| [`tts-twitch-command.txt`](streamerbot/tts-twitch-command.txt) | El texto después de `!tts` en el chat de Twitch | Comando `!tts` (incluido) | No hay que hacer nada. |
+| [`tts-twitch-channel-points.txt`](streamerbot/tts-twitch-channel-points.txt) | El texto que escribe el viewer al canjear una recompensa | Twitch → Channel Reward → Reward Redemption | Elige tu recompensa en el trigger. |
+| [`tts-twitch-bits.txt`](streamerbot/tts-twitch-bits.txt) | El mensaje de un cheer, sin los cheermotes | Twitch → Chat → Cheer | Ajusta `minBits` (por defecto `100`). |
 
-1. En Streamer.bot, pulsa **Import**.
-2. Arrastra el archivo a la ventana o pega su contenido en **Import String**.
-3. Pulsa **Import**.
+### Kick
 
-Las acciones llaman a `/speak` de la app en el puerto `7979`. Si cambias el puerto HTTP en la app, cambia también el argumento `ttsPort` de cada acción.
+| Archivo | Qué lee | Trigger | Después de importar |
+|---|---|---|---|
+| [`tts-kick-command.txt`](streamerbot/tts-kick-command.txt) | El texto después de `!tts` en el chat de Kick | Comando `!tts` (incluido, con el chat de Kick como fuente) | No hay que hacer nada. |
+| [`tts-kick-channel-points.txt`](streamerbot/tts-kick-channel-points.txt) | El texto que escribe el viewer al canjear una recompensa | Kick → Channel Reward → Reward Redemption | Elige tu recompensa en el trigger. |
+| [`tts-kick-kicks.txt`](streamerbot/tts-kick-kicks.txt) | El mensaje que acompaña a los Kicks | Kick → Kicks → Gifted | Ajusta `minKicks` (por defecto `100`). |
 
-La app no lee del chat de Twitch los mensajes de puntos y bits, para que no suenen dos veces. Puedes desactivarlo en **Filtros y lectura**.
+Las acciones de Kick necesitan Streamer.bot 1.0.2 o posterior.
 
-Para regenerar los archivos, ejecuta `py streamerbot/build.py`.
+### Importar
+
+1. Descarga el archivo: ábrelo en GitHub y pulsa **Download raw file**. También puedes copiar todo su texto.
+2. En Streamer.bot, pulsa **Import** (barra superior).
+3. Arrastra el archivo al cuadro **Import String** o pega ahí el texto.
+4. Pulsa **Import**. Si Streamer.bot pide compilar código C#, acepta.
+
+Las acciones aparecen en el grupo **TTS (edge-tts)**. Los comandos `!tts` aparecen en **Commands**, en el mismo grupo.
+
+### Qué lleva cada acción
+
+| Sub-acción | Para qué sirve |
+|---|---|
+| Comment | Explica qué hay que cambiar. |
+| Set Argument `minBits` / `minKicks` | Solo en las acciones de bits y Kicks. Los mensajes con menos bits o Kicks no se leen. |
+| Set Argument `ttsPort` | Puerto del servidor HTTP de la app (por defecto `7979`). |
+| Execute C# Code | Envía el usuario y el texto a `/speak` de la app, codificados para URL. Si la app está cerrada, deja un aviso en el registro de Streamer.bot. |
+
+Para cambiar un valor, haz doble clic en la sub-acción **Set Argument** y edita **Value**. Por ejemplo, pon `minBits` a `500`.
+
+### Configurar las recompensas de puntos
+
+1. Crea la recompensa en Twitch o Kick y activa la opción que obliga al viewer a escribir texto.
+2. En Streamer.bot, abre la acción **TTS · Twitch · Channel points** o **TTS · Kick · Channel points**.
+3. Haz doble clic en el trigger y elige tu recompensa de la lista.
+
+### Evitar que se lea dos veces
+
+- **Twitch:** la app no lee del chat los mensajes de puntos y bits. Solo los leen las acciones. Si no usas estas acciones, desmarca esa opción en **Filtros y lectura**.
+- **Comando `!tts`:** los comandos no se leen desde el chat, porque **Ignorar comandos** está activado por defecto. Solo los lee la acción.
+- **Kick:** la app no puede saber si un mensaje del chat viene de un canje. Si oyes un canje dos veces, desactiva **Leer chat de Kick** o no uses la acción de canjes de Kick.
+
+### Si algo no funciona
+
+- **No se lee nada:**
+  1. Comprueba que la app está abierta.
+  2. Comprueba que en **Conexión** pone `HTTP en http://127.0.0.1:7979`.
+  3. Comprueba que `ttsPort` coincide con ese puerto.
+- **La importación falla:** crea la acción a mano. Usa el trigger de las tablas de arriba y una sub-acción **Core → Network → Fetch URL** con la URL de [Servidor HTTP local](#servidor-http-local).
+- **Para ver el error:** abre el registro de Streamer.bot y busca las líneas que empiezan por `[TTS]`.
+
+### Regenerar los archivos
+
+Los archivos salen de [`streamerbot/build.py`](streamerbot/build.py). Para cambiar los valores por defecto o el código C#, edita ese script y ejecuta:
+
+```
+py streamerbot/build.py
+```
 
 ## Servidor HTTP local
 
