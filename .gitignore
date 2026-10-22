@@ -7,3 +7,8 @@ leyendo_ahora.txt
 *.mp3
 *.srt
 __pycache__/
+
+# PyInstaller (build_exe.bat)
+build/
+dist/
+*.spec

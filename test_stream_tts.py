@@ -75,6 +75,37 @@ assert http_speech(cfg, "hola", "pepe") == ("pepe dice: hola", "es-MX-JorgeNeura
 assert http_speech(cfg, "hola", voice="en-US-AvaNeural") == ("hola", "en-US-AvaNeural", None)
 assert http_speech(cfg, "   ")[2] == "empty message"
 
+# moderación: id del mensaje y usuario afectado
+from stream_tts import (find_voice, message_id, mod_target, set_user_voice, spam_reason, voice_alias,
+                        voice_command, word_marks)
+assert message_id({"messageId": "abc"}) == "abc" and message_id({"message": {"msgId": "x1"}}) == "x1"
+assert mod_target({"targetUser": {"login": "Troll", "name": "TROLL"}}) == "troll"
+assert mod_target({"user": {"username": "KickTroll"}}) == "kicktroll" and mod_target({"username": "x"}) == "x"
+assert mod_target({}) == ""
+
+# anti-spam: mods (nivel 3) y streamer quedan fuera
+spam = dict(cfg, user_cooldown=10, max_per_user=2)
+assert spam_reason(spam, 0, None, 0) is None
+assert spam_reason(spam, 0, 3.0, 0) == "cooldown" and spam_reason(spam, 0, 11.0, 0) is None
+assert spam_reason(spam, 1, 11.0, 2) == "too many queued"
+assert spam_reason(spam, 3, 1.0, 9) is None
+assert spam_reason(dict(spam, user_cooldown=0, max_per_user=0), 0, 0.1, 99) is None
+
+# comando para elegir voz
+fav = ["es-MX-DaliaNeural", "en-US-AvaMultilingualNeural", "es-ES-AlvaroNeural"]
+assert [voice_alias(v) for v in fav] == ["Dalia", "Ava", "Alvaro"]
+assert find_voice(fav, "dalia") == fav[0] and find_voice(fav, "AL") == fav[2] and find_voice(fav, "x") is None
+assert find_voice(fav, "en-us-avamultilingualneural") == fav[1]
+assert voice_command(cfg, "!VOZ Dalia ") == "Dalia" and voice_command(cfg, "!voice") == ""
+assert voice_command(cfg, "!vozz x") is None and voice_command(dict(cfg, voice_cmd_enabled=False), "!voz x") is None
+assert set_user_voice("pepe=a\nana=b", "Ana", "c") == "pepe=a\nana=c"
+assert set_user_voice("pepe=a\n@ana=b\n", "ana", None) == "pepe=a"
+
+# overlay: dónde acaba cada palabra dicha dentro del texto
+assert word_marks("Ana says: hola, ¿qué tal?", [(0, "Ana"), (300, "says"), (700, "hola"), (900, "qué"),
+                                               (1100, "tal"), (1200, "nope")]) == \
+    [[0, 3], [300, 8], [700, 14], [900, 20], [1100, 24]]
+
 # traducción al español
 stream_tts.LANG = "es"
 assert chat_speech(cfg, msg1("!comando"))[3] == "comando"

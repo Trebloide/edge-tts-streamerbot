@@ -46,14 +46,29 @@ public class CPHInline
         text = (text ?? "").Trim();
         if (text.Length == 0)
             return true;
-        string url = "http://127.0.0.1:" + GetInt("ttsPort", 7979) + "/speak?user="
-            + Uri.EscapeDataString(GetArg("user", GetArg("userName", ""))) + "&text=" + Uri.EscapeDataString(text);
+        return Call("/speak?user=" + Uri.EscapeDataString(GetArg("user", GetArg("userName", "")))
+            + "&text=" + Uri.EscapeDataString(text));
+    }
+
+    // Moderador o el propio streamer (Twitch: broadcastUserName, Kick: broadcastUsername)
+    private bool IsModOrBroadcaster()
+    {
+        bool mod;
+        if (bool.TryParse(GetArg("isModerator", "false"), out mod) && mod)
+            return true;
+        string user = GetArg("userName", "").ToLowerInvariant();
+        string owner = GetArg("broadcastUserName", GetArg("broadcastUsername", "")).ToLowerInvariant();
+        return user.Length > 0 && user == owner;
+    }
+
+    private bool Call(string pathAndQuery)
+    {
         try
         {
             using (WebClient client = new WebClient())
             {
                 client.Encoding = Encoding.UTF8;
-                client.DownloadString(url);
+                client.DownloadString("http://127.0.0.1:" + GetInt("ttsPort", 7979) + pathAndQuery);
             }
         }
         catch (Exception e)
@@ -81,6 +96,12 @@ BODIES = {
         // rawInput = mensaje que acompaña a los Kicks
         return Speak(GetArg("rawInput", ""));""",
 }
+# Comandos de moderación: solo mods y el streamer; llaman a los controles de la app
+MOD_COMMANDS = [("!ttsskip", "skip", "/skip"), ("!ttsclear", "clear", "/clear"), ("!ttspause", "pause", "/toggle")]
+for _, kind, path in MOD_COMMANDS:
+    BODIES["mod_" + kind] = f"""        if (!IsModOrBroadcaster())
+            return true;
+        return Call("{path}");"""
 
 
 def uid():
@@ -138,19 +159,35 @@ REWARD_NOTE = ("Edit the trigger and pick your reward (it must ask the viewer fo
 SOURCES = {"Twitch": 1, "Kick": 2097152}
 
 
+def command(platform, text):
+    return {"permittedUsers": [], "permittedGroups": [], "id": uid(), "name": f"TTS {text} ({platform})",
+            "enabled": True, "include": False, "mode": 0, "command": text, "regexExplicitCapture": False,
+            "location": 0, "ignoreBotAccount": True, "ignoreInternal": True, "sources": SOURCES[platform],
+            "persistCounter": False, "persistUserCounter": False, "caseSensitive": False, "globalCooldown": 0,
+            "userCooldown": 0, "group": GROUP, "grantType": 0}
+
+
 def command_file(platform):
-    command_id = uid()
-    cmd = {"permittedUsers": [], "permittedGroups": [], "id": command_id, "name": f"TTS !tts ({platform})",
-           "enabled": True, "include": False, "mode": 0, "command": "!tts", "regexExplicitCapture": False,
-           "location": 0, "ignoreBotAccount": True, "ignoreInternal": True, "sources": SOURCES[platform],
-           "persistCounter": False, "persistUserCounter": False, "caseSensitive": False, "globalCooldown": 0,
-           "userCooldown": 0, "group": GROUP, "grantType": 0}
+    cmd = command(platform, "!tts")
     name = f"TTS · {platform} · !tts command"
     export(OUT / f"tts-{platform.lower()}-command.txt", name,
            f"Reads '!tts <text>' from {platform} chat with the edge-tts app.",
            [action(name, [comment(PORT_NOTE, 0), set_arg("ttsPort", "7979", 1), csharp("command", 2)],
-                   [trigger(401, commandId=command_id)])],
+                   [trigger(401, commandId=cmd["id"])])],
            [cmd])
+
+
+def mod_commands_file(platform):
+    actions, commands = [], []
+    for text, kind, _ in MOD_COMMANDS:
+        cmd = command(platform, text)
+        commands.append(cmd)
+        actions.append(action(f"TTS · {platform} · {text}",
+                              [comment("Only moderators and the broadcaster. / Solo moderadores y el streamer.", 0),
+                               comment(PORT_NOTE, 1), set_arg("ttsPort", "7979", 2), csharp("mod_" + kind, 3)],
+                              [trigger(401, commandId=cmd["id"])]))
+    export(OUT / f"tts-{platform.lower()}-mod-commands.txt", f"TTS · {platform} · Mod commands",
+           f"!ttsskip, !ttsclear and !ttspause for {platform} moderators.", actions, commands)
 
 
 def reward_file(platform, trigger_type):
@@ -171,8 +208,10 @@ def build():
                     set_arg("minBits", "100", 1),
                     comment(PORT_NOTE, 2), set_arg("ttsPort", "7979", 3), csharp("bits", 4)],
                    [trigger(102, min=-1, max=-1)])])
+    mod_commands_file("Twitch")
 
     command_file("Kick")
+    mod_commands_file("Kick")
     reward_file("Kick", 35024)
     export(OUT / "tts-kick-kicks.txt", "TTS · Kick · Kicks", "Reads Kicks gift messages with at least minKicks Kicks.",
            [action("TTS · Kick · Kicks",

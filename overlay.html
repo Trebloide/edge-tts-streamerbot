@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stream TTS overlay</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --size: 30px;
+    --accent: #a970ff;
+    --text: #ffffff;
+    --dim: rgba(255, 255, 255, 0.45);
+    --card: rgba(18, 18, 22, 0.82);
+  }
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  body {
+    height: 100vh; display: flex; align-items: flex-end; padding: 16px; box-sizing: border-box;
+    font: 600 var(--size)/1.35 "Segoe UI", system-ui, sans-serif;
+  }
+  #card {
+    max-width: 100%; padding: 0.55em 0.8em 0.65em; border-radius: 0.5em; background: var(--card);
+    border-left: 0.18em solid var(--accent); box-shadow: 0 0.3em 1.2em rgba(0, 0, 0, 0.35);
+    opacity: 0; transform: translateY(0.4em); transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  #card.show { opacity: 1; transform: none; }
+  #user { color: var(--accent); font-size: 0.6em; letter-spacing: 0.04em; text-transform: uppercase; }
+  #user:empty { display: none; }
+  #text { color: var(--dim); overflow-wrap: anywhere; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+  #spoken { color: var(--text); }
+</style>
+</head>
+<body>
+<div id="card">
+  <div id="user"></div>
+  <div id="text"><span id="spoken"></span><span id="rest"></span></div>
+</div>
+<script>
+  // Recibe del programa: start {user, text, marks: [[ms, fin_en_texto], ...]}, pause, resume, end.
+  const params = new URLSearchParams(location.search);
+  const hold = Number(params.get("hold") ?? 2) * 1000;
+  if (params.get("size")) document.documentElement.style.setProperty("--size", params.get("size") + "px");
+
+  const card = document.getElementById("card");
+  const userEl = document.getElementById("user");
+  const spokenEl = document.getElementById("spoken");
+  const restEl = document.getElementById("rest");
+  let text = "", marks = [], start = 0, pausedAt = null, hideTimer = null, playing = false;
+
+  function render() {
+    if (playing) {
+      const elapsed = (pausedAt ?? performance.now()) - start;
+      let end = 0;
+      for (const [ms, pos] of marks) { if (ms <= elapsed) end = pos; else break; }
+      spokenEl.textContent = text.slice(0, end);
+      restEl.textContent = text.slice(end);
+    }
+    requestAnimationFrame(render);
+  }
+
+  function handle(msg) {
+    if (msg.type === "start") {
+      clearTimeout(hideTimer);
+      text = msg.text; marks = msg.marks || []; start = performance.now(); pausedAt = null; playing = true;
+      userEl.textContent = msg.user || "";
+      card.classList.add("show");
+    } else if (msg.type === "pause" && pausedAt === null) {
+      pausedAt = performance.now();
+    } else if (msg.type === "resume" && pausedAt !== null) {
+      start += performance.now() - pausedAt; pausedAt = null;
+    } else if (msg.type === "end") {
+      playing = false;
+      spokenEl.textContent = text; restEl.textContent = "";
+      hideTimer = setTimeout(() => card.classList.remove("show"), hold);
+    }
+  }
+
+  function connect() {
+    const ws = new WebSocket(`ws://${location.host}/overlay/ws`);
+    ws.onmessage = (e) => handle(JSON.parse(e.data));
+    ws.onclose = () => setTimeout(connect, 2000);  // la app se cerró o reinició el servidor HTTP
+  }
+  connect();
+  requestAnimationFrame(render);
+</script>
+</body>
+</html>

@@ -9,6 +9,7 @@ import json
 import os
 import queue
 import re
+import sys
 import threading
 import time
 import tkinter as tk
@@ -23,9 +24,19 @@ import edge_tts
 import pygame
 from aiohttp import web
 
-APP_DIR = Path(__file__).resolve().parent
+try:  # icono en la bandeja del sistema (opcional)
+    import pystray
+    from PIL import Image
+except ImportError:
+    pystray = None
+
+# Con el .exe de PyInstaller la configuración va junto al ejecutable y los recursos dentro del paquete
+FROZEN = getattr(sys, "frozen", False)
+APP_DIR = Path(sys.executable).parent if FROZEN else Path(__file__).resolve().parent
+RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 CONFIG_PATH = APP_DIR / "config.json"
-ICON_PATH = APP_DIR / "icon.ico"
+ICON_PATH = RES_DIR / "icon.ico"
+OVERLAY_PATH = RES_DIR / "overlay.html"
 
 # ---------------------------------------------------------------- idiomas
 
@@ -70,6 +81,39 @@ ES = {
     "Ignored from now on: {users}": "Ignorados desde ahora: {users}",
     "Error: {err}": "Error: {err}",
     "Queued: {n}": "En cola: {n}",
+    # moderación, anti-spam y comando de voz
+    "Removed {n} message(s): {why}": "Quitados {n} mensaje(s): {why}",
+    "message deleted by a moderator": "mensaje borrado por un moderador",
+    "{user} was timed out or banned": "{user} ha recibido timeout o ban",
+    "cooldown": "espera entre mensajes",
+    "too many queued": "demasiados en cola",
+    "@{user} there are no voices to choose from yet.": "@{user} todavía no hay voces para elegir.",
+    "@{user} voices: {names}. Use {cmd} <name> ({cmd} off to reset).":
+        "@{user} voces: {names}. Usa {cmd} <nombre> ({cmd} off para quitarla).",
+    "@{user} unknown voice. Available: {names}": "@{user} no conozco esa voz. Disponibles: {names}",
+    "default": "la predeterminada",
+    "{user} chose the voice {voice}": "{user} ha elegido la voz {voice}",
+    "@{user} your voice is now {voice}.": "@{user} ahora tu voz es {voice}.",
+    "Streamer.bot did not send the chat reply. Replies need authentication: "
+    "turn it on in Streamer.bot and enter the password in the Connection tab.":
+        "Streamer.bot no ha enviado la respuesta al chat. Las respuestas necesitan autenticación: "
+        "actívala en Streamer.bot y pon la contraseña en la pestaña Conexión.",
+    "Seconds between messages per user": "Segundos entre mensajes por usuario",
+    "0 = no limit · mods and broadcaster are exempt": "0 = sin límite · mods y streamer no cuentan",
+    "Max queued messages per user": "Máx. mensajes en cola por usuario",
+    "Viewers can choose their voice with": "Los viewers pueden elegir su voz con",
+    "Reply in chat (needs the Streamer.bot password)": "Responder en el chat (necesita la contraseña de Streamer.bot)",
+    "Only your favorite voices. Example: !voice dalia · !voice off": "Solo tus voces favoritas. Ejemplo: !voz dalia · !voz off",
+    "OBS overlay": "Overlay de OBS",
+    "Add it in OBS as a Browser source (for example 800×300). Optional URL parameters:\n"
+    "size (font px), hold (seconds visible after reading).":
+        "Añádelo en OBS como fuente de Navegador (por ejemplo 800×300). Parámetros opcionales en la URL:\n"
+        "size (tamaño de letra en px), hold (segundos visible al terminar).",
+    "Close to the system tray (keep reading in the background)":
+        "Cerrar a la bandeja del sistema (sigue leyendo en segundo plano)",
+    "Show window": "Mostrar ventana",
+    "Pause / resume": "Pausar / reanudar",
+    "Quit": "Salir",
     # motivos para ignorar
     "ignored user": "usuario ignorado",
     "role too low": "rol insuficiente",
@@ -148,8 +192,8 @@ ES = {
     "Required prefix": "Prefijo obligatorio",
     "empty = read everything; e.g. !tts": "vacío = leer todo; ej. !tts",
     "Ignore commands (messages starting with !)": "Ignorar comandos (mensajes que empiezan por !)",
-    "Don't read channel point and bits messages from chat (the Streamer.bot actions read them)":
-        "No leer del chat los mensajes de puntos del canal y bits (los leen las acciones de Streamer.bot)",
+    "Don't read channel points and bits from chat (the Streamer.bot actions read them)":
+        "No leer del chat los canjes ni los bits (ya los leen las acciones)",
     "Who can use it": "Quién puede usarlo",
     "Remove emotes": "Quitar emotes",
     "Shorten repetitions (hahahahaha → hahaha)": "Acortar repeticiones (jajajajaja → jajaja)",
@@ -274,6 +318,11 @@ DEFAULTS = {
     "collapse_repeats": True,
     "max_chars": 200,
     "max_queue": 20,
+    "user_cooldown": 0,  # segundos entre mensajes del mismo usuario (0 = sin límite)
+    "max_per_user": 3,  # mensajes de un mismo usuario esperando en la cola (0 = sin límite)
+    "voice_cmd_enabled": True,
+    "voice_command": "!voice !voz",
+    "voice_cmd_reply": True,
     "ignored_users": "nightbot\nstreamelements\nstreamlabs\nmoobot\nwizebot\nsery_bot",
     "blocked_words": "",
     "replacements": "",
@@ -288,6 +337,7 @@ DEFAULTS = {
     "log_ignored": True,
     "now_file_enabled": False,
     "now_file": str(APP_DIR / "now_reading.txt"),
+    "close_to_tray": False,
     "geometry": "1000x740",
 }
 
@@ -458,6 +508,83 @@ def http_speech(cfg, text, user="", voice=None):
     return make_speech(cfg, user, text), voice or voice_for(cfg, user), None
 
 
+def message_id(data):
+    m = data.get("message")
+    if isinstance(m, dict):  # Streamer.bot 0.2.x
+        return m.get("msgId") or m.get("id") or ""
+    return data.get("messageId") or ""
+
+
+def mod_target(data):
+    """Login del usuario afectado por un timeout/ban. Kick no documenta el formato: se prueban varios campos."""
+    for key in ("targetUser", "user", "bannedUser"):
+        u = data.get(key)
+        if isinstance(u, dict) and (u.get("login") or u.get("username") or u.get("name")):
+            return (u.get("login") or u.get("username") or u.get("name")).lower()
+    for key in ("userName", "username", "user_login", "user"):
+        if isinstance(data.get(key), str) and data[key]:
+            return data[key].lower()
+    return ""
+
+
+def spam_reason(cfg, level, since_last, queued):
+    """Anti-spam por usuario (mods y streamer quedan fuera). since_last en segundos, None si es su primer mensaje."""
+    if level >= ROLES["mods"]:
+        return None
+    cooldown = int(cfg["user_cooldown"])
+    if cooldown > 0 and since_last is not None and since_last < cooldown:
+        return tr("cooldown")
+    if 0 < int(cfg["max_per_user"]) <= queued:
+        return tr("too many queued")
+    return None
+
+
+def voice_alias(short_name):
+    """Nombre corto para el chat: es-MX-DaliaNeural -> Dalia, en-US-AvaMultilingualNeural -> Ava."""
+    name = short_name.split("-", 2)[-1]
+    return re.sub(r"(Multilingual)?Neural$", "", name) or name
+
+
+def find_voice(favorites, wanted):
+    """Busca entre las favoritas por nombre corto, nombre completo o comienzo del nombre."""
+    w = wanted.strip().lower()
+    if not w:
+        return None
+    exact = [v for v in favorites if w in (v.lower(), voice_alias(v).lower())]
+    prefix = [v for v in favorites if voice_alias(v).lower().startswith(w)]
+    return (exact or prefix or [None])[0]
+
+
+def voice_command(cfg, text):
+    """Si el mensaje es el comando para elegir voz devuelve su argumento ('' si no lleva); si no, None."""
+    if not cfg["voice_cmd_enabled"]:
+        return None
+    first, _, rest = text.strip().partition(" ")
+    if first.lower() in cfg["voice_command"].replace(",", " ").lower().split():
+        return rest.strip()
+    return None
+
+
+def set_user_voice(text, login, voice):
+    """Cambia la línea del usuario en 'voz por usuario' (voice=None la quita)."""
+    keep = [l for l in text.splitlines()
+            if l.strip() and l.split("=", 1)[0].strip().lower().lstrip("@") != login.lower()]
+    if voice:
+        keep.append(f"{login.lower()}={voice}")
+    return "\n".join(keep)
+
+
+def word_marks(text, words):
+    """Para cada palabra dicha (ms, palabra) busca dónde acaba en el texto: [[ms, fin], ...] para el overlay."""
+    marks, pos, low = [], 0, text.lower()
+    for ms, word in words:
+        i = low.find(word.lower(), pos)
+        if i >= 0:
+            pos = i + len(word)
+            marks.append([round(ms), pos])
+    return marks
+
+
 def b64sha(s):
     return base64.b64encode(hashlib.sha256(s.encode("utf-8")).digest()).decode()
 
@@ -469,13 +596,19 @@ class Engine:
         self.cfg, self.emit = cfg, emit  # emit(tipo, valor) se llama desde el hilo del motor
         self.paused = False
         self.last_user = None
-        self.pending = deque()  # mensajes en espera: {"id", "text", "voice", "user"}
+        # mensajes en espera: {"id", "text", "voice", "user", "platform", "msg_id"}
+        self.pending = deque()
         self.current = None
         self._ids = itertools.count(1)
         self._prefetch = {}  # id -> tarea de síntesis adelantada
+        self._skip_id = None  # id del mensaje actual que hay que cortar aunque aún se esté sintetizando
+        self._last_read = {}  # (plataforma, login) -> momento del último mensaje leído (anti-spam)
         self._sound = None
         self._sb_task = None
+        self._ws = None
+        self._reply_warned = False
         self._http_runner = None
+        self._overlay_clients = set()
         self.loop = asyncio.new_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
         self.call(self._init()).result()
@@ -516,16 +649,21 @@ class Engine:
     def set_volume(self, v):
         self.soon(lambda: self._sound and self._sound.set_volume(v / 100))
 
+    def _stop_current(self):
+        if self.current:
+            self._skip_id = self.current["id"]
+        if pygame.mixer.get_init():
+            pygame.mixer.stop()
+
     def skip(self):
-        self.soon(lambda: pygame.mixer.get_init() and pygame.mixer.stop())
+        self.soon(self._stop_current)
 
     def clear(self):
         def _clear():
             self.pending.clear()
             self._prune_prefetch()
             self._emit_queue()
-            if pygame.mixer.get_init():
-                pygame.mixer.stop()
+            self._stop_current()
         self.soon(_clear)
 
     def remove(self, pred):
@@ -536,6 +674,19 @@ class Engine:
             self._prune_prefetch()
             self._emit_queue()
         self.soon(_remove)
+
+    def _drop(self, pred, why):
+        """Moderación: quita de la cola lo que cumple pred y corta el mensaje actual si también lo cumple."""
+        removed = [i for i in self.pending if pred(i)]
+        for item in removed:
+            self.pending.remove(item)
+        now = bool(self.current and pred(self.current))
+        if now:
+            self._stop_current()
+        if removed or now:
+            self._prune_prefetch()
+            self._emit_queue()
+            self.log(tr("Removed {n} message(s): {why}", n=len(removed) + now, why=why))
 
     def _prune_prefetch(self):
         alive = {i["id"] for i in self.pending}
@@ -551,28 +702,32 @@ class Engine:
             if pygame.mixer.get_init():
                 (pygame.mixer.pause if paused else pygame.mixer.unpause)()
             self.emit("paused", paused)
+            self._overlay({"type": "pause" if paused else "resume"})
         self.soon(_set)
 
-    def _communicate(self, text, voice):
+    def _communicate(self, text, voice, boundary):
         c = self.cfg
-        boundary = c["boundary"] if c["boundary"] != "none" else "SentenceBoundary"  # la librería exige uno
         return edge_tts.Communicate(
             text, voice, rate=f"{int(c['rate']):+d}%", volume=f"{int(c['tts_volume']):+d}%",
             pitch=f"{int(c['pitch']):+d}Hz", boundary=boundary, proxy=c["proxy"].strip() or None,
             connect_timeout=int(c["connect_timeout"]), receive_timeout=int(c["receive_timeout"]))
 
-    async def _synth(self, text, voice, submaker=None):
-        audio = []
-        async for ch in self._communicate(text, voice).stream():
+    async def _synth(self, text, voice, boundary="WordBoundary", submaker=None):
+        """Devuelve (audio mp3, [(ms, palabra), ...]); las palabras sirven para el overlay."""
+        audio, words = [], []
+        async for ch in self._communicate(text, voice, boundary).stream():
             if ch["type"] == "audio":
                 audio.append(ch["data"])
-            elif submaker is not None:
-                submaker.feed(ch)
-        return b"".join(audio)
+            else:
+                words.append((ch["offset"] / 10000, ch["text"]))  # offset en unidades de 100 ns
+                if submaker is not None:
+                    submaker.feed(ch)
+        return b"".join(audio), words
 
     async def save(self, text, voice, mp3_path, subtitles):
         sub = edge_tts.SubMaker() if subtitles else None
-        audio = await self._synth(text, voice, sub)
+        boundary = self.cfg["boundary"] if subtitles else "SentenceBoundary"
+        audio, _ = await self._synth(text, voice, boundary, sub)
         Path(mp3_path).write_bytes(audio)
         if sub:
             Path(mp3_path).with_suffix(".srt").write_text(sub.get_srt(), encoding="utf-8")
@@ -598,12 +753,17 @@ class Engine:
             task = self._prefetch.pop(item["id"], None) or self.loop.create_task(
                 self._synth(item["text"], item["voice"]))
             try:
+                audio, words = await task
+                if self._skip_id == item["id"]:  # saltado o moderado mientras se sintetizaba
+                    continue
                 # Se decodifica entero antes de sonar: así no hay cortes por decodificar en directo
-                self._sound = pygame.mixer.Sound(io.BytesIO(await task))
+                self._sound = pygame.mixer.Sound(io.BytesIO(audio))
                 self._sound.set_volume(int(self.cfg["volume"]) / 100)
                 channel = self._sound.play()
                 self.log(f"▶ [{item['voice']}] {item['text']}")
                 self._write_now(item["text"])
+                self._overlay({"type": "start", "user": item["name"], "text": item["text"],
+                               "marks": word_marks(item["text"], words)})
                 while channel.get_busy() or self.paused:
                     self._prefetch_next()  # sintetiza el siguiente mientras suena este
                     await asyncio.sleep(0.05)
@@ -612,17 +772,44 @@ class Engine:
             finally:
                 self.current = None
                 self._write_now("")
+                self._overlay({"type": "end"})
                 self._emit_queue()
 
     def speak(self, text, voice=None, user=""):
         self.soon(self._enqueue, text, voice or self.cfg["voice"], user)
 
-    def _enqueue(self, text, voice, user=""):
+    def _enqueue(self, text, voice, user="", platform="", msg_id="", name=""):
         if len(self.pending) >= int(self.cfg["max_queue"]) > 0:
             self.log(tr("Queue full, dropped: {text}", text=text))
             return
-        self.pending.append({"id": next(self._ids), "text": text, "voice": voice, "user": user})
+        self.pending.append({"id": next(self._ids), "text": text, "voice": voice, "user": user,
+                             "platform": platform, "msg_id": msg_id, "name": name or user})
         self._emit_queue()
+
+    # --- overlay para OBS (fuente de navegador)
+    def _overlay(self, msg):
+        for ws in list(self._overlay_clients):
+            self.loop.create_task(self._overlay_send(ws, msg))
+
+    async def _overlay_send(self, ws, msg):
+        try:
+            await ws.send_json(msg)
+        except Exception:
+            self._overlay_clients.discard(ws)
+
+    async def _h_overlay(self, req):
+        return web.FileResponse(OVERLAY_PATH)
+
+    async def _h_overlay_ws(self, req):
+        ws = web.WebSocketResponse(heartbeat=30)
+        await ws.prepare(req)
+        self._overlay_clients.add(ws)
+        try:
+            async for _ in ws:  # el overlay solo escucha
+                pass
+        finally:
+            self._overlay_clients.discard(ws)
+        return ws
 
     # --- Streamer.bot (WebSocket)
     def connect_sb(self, on=True):
@@ -643,8 +830,11 @@ class Engine:
                 async with aiohttp.ClientSession() as s, s.ws_connect(url, heartbeat=20) as ws:
                     await self._sb_handshake(ws)
                     # por separado: si Streamer.bot no conoce Kick (0.2.x), Twitch sigue funcionando
-                    await ws.send_json({"request": "Subscribe", "id": "tts-sub", "events": {"Twitch": ["ChatMessage"]}})
-                    await ws.send_json({"request": "Subscribe", "id": "tts-sub-kick", "events": {"Kick": ["ChatMessage"]}})
+                    await ws.send_json({"request": "Subscribe", "id": "tts-sub", "events": {
+                        "Twitch": ["ChatMessage", "ChatMessageDeleted", "UserTimedOut", "UserBanned"]}})
+                    await ws.send_json({"request": "Subscribe", "id": "tts-sub-kick", "events": {
+                        "Kick": ["ChatMessage", "UserTimedOut", "UserBanned"]}})
+                    self._ws = ws
                     self.emit("sb", tr("Connected ✔"))
                     self.log(tr("Connected to Streamer.bot ({url})", url=url))
                     async for msg in ws:
@@ -663,6 +853,8 @@ class Engine:
                             status=e.status, url=url))
             except Exception as e:
                 self.log(tr("Streamer.bot: {err}", err=f"{type(e).__name__}: {e}"))
+            finally:
+                self._ws = None
             self.emit("sb", tr("Disconnected · retrying in 5 s"))
             await asyncio.sleep(5)
 
@@ -681,19 +873,81 @@ class Engine:
         await ws.send_json({"request": "Authenticate", "id": "tts-auth",
                             "authentication": b64sha(secret + auth["challenge"])})
 
+    def _reply(self, platform, message):
+        """Responde en el chat (SendMessage de Streamer.bot, que exige contraseña)."""
+        if self.cfg["voice_cmd_reply"] and self._ws is not None:
+            self.loop.create_task(self._ws.send_json({"request": "SendMessage", "id": "tts-reply",
+                                                      "platform": platform.lower(), "bot": False,
+                                                      "internal": False, "message": message}))
+
+    def _voice_cmd(self, platform, user, login, arg):
+        favs = self.cfg["favorites"]
+        names = ", ".join(voice_alias(v) for v in favs)
+        cmd = self.cfg["voice_command"].replace(",", " ").split()[0]
+        if not favs:
+            self._reply(platform, tr("@{user} there are no voices to choose from yet.", user=user))
+            return
+        if not arg:
+            self._reply(platform, tr("@{user} voices: {names}. Use {cmd} <name> ({cmd} off to reset).",
+                                     user=user, names=names, cmd=cmd))
+            return
+        voice = None if arg.lower() in ("off", "reset", "default") else find_voice(favs, arg)
+        if voice is None and arg.lower() not in ("off", "reset", "default"):
+            self._reply(platform, tr("@{user} unknown voice. Available: {names}", user=user, names=names))
+            return
+        self.cfg["user_voices"] = set_user_voice(self.cfg["user_voices"], login, voice)
+        self.emit("user_voices", self.cfg["user_voices"])
+        shown = voice_alias(voice) if voice else tr("default")
+        self.log(tr("{user} chose the voice {voice}", user=login, voice=voice or tr("default")))
+        self._reply(platform, tr("@{user} your voice is now {voice}.", user=user, voice=shown))
+
     def _sb_message(self, d):
-        if d.get("id") in ("tts-auth", "tts-sub", "tts-sub-kick") and d.get("status") == "error":
-            self.log(tr("Streamer.bot rejected '{id}': {err}", id=d["id"], err=d.get("error", d)))
+        if d.get("id") in ("tts-auth", "tts-sub", "tts-sub-kick", "tts-reply") and d.get("status") == "error":
+            if d["id"] != "tts-reply":
+                self.log(tr("Streamer.bot rejected '{id}': {err}", id=d["id"], err=d.get("error", d)))
+            elif not self._reply_warned:
+                self._reply_warned = True
+                self.log(tr("Streamer.bot did not send the chat reply. Replies need authentication: "
+                            "turn it on in Streamer.bot and enter the password in the Connection tab."))
         ev = d.get("event") or {}
-        platform = {"Twitch": "read_twitch", "Kick": "read_kick"}.get(ev.get("source"))
-        if platform and ev.get("type") == "ChatMessage" and self.cfg["read_chat"] and self.cfg[platform]:
-            speech, voice, login, why = chat_speech(self.cfg, d.get("data") or {}, self.last_user)
-            if speech is None:
-                if self.cfg["log_ignored"]:
-                    self.log(tr("Ignored ({why}): {login}", why=why, login=login))
-                return
-            self.last_user = login
-            self._enqueue(speech, voice, login)
+        src, typ, data = ev.get("source"), ev.get("type"), d.get("data") or {}
+        if src not in ("Twitch", "Kick"):
+            return
+        if typ == "ChatMessageDeleted":
+            mid = data.get("messageId") or ""
+            if mid:
+                self._drop(lambda i: i["msg_id"] == mid, tr("message deleted by a moderator"))
+        elif typ in ("UserTimedOut", "UserBanned"):
+            target = mod_target(data)
+            if target:
+                self._drop(lambda i: i["platform"] == src and i["user"].lower() == target,
+                           tr("{user} was timed out or banned", user=target))
+        elif typ == "ChatMessage" and self.cfg["read_chat"] and self.cfg["read_" + src.lower()]:
+            self._chat(src, data)
+
+    def _chat(self, platform, data):
+        user, login, text, role, sub, _ = parse_chat(data)
+        arg = voice_command(self.cfg, text)
+        if arg is not None:
+            if login and login.lower() not in {u.lower().lstrip("@") for u in lines(self.cfg["ignored_users"])}:
+                self._voice_cmd(platform, user, login, arg)
+            return
+        speech, voice, login, why = chat_speech(self.cfg, data, self.last_user)
+        if speech is None:
+            if self.cfg["log_ignored"]:
+                self.log(tr("Ignored ({why}): {login}", why=why, login=login))
+            return
+        key, now = (platform, login.lower()), time.monotonic()
+        last = self._last_read.get(key)
+        queued = sum(1 for i in self.pending if i["platform"] == platform and i["user"].lower() == key[1])
+        why = spam_reason(self.cfg, user_level(role, sub), None if last is None else now - last, queued)
+        if why:
+            if self.cfg["log_ignored"]:
+                self.log(tr("Ignored ({why}): {login}", why=why, login=login))
+            return
+        self._last_read[key] = now
+        self.last_user = login
+        self._enqueue(speech, voice, login, platform, message_id(data), user)
 
     # --- servidor HTTP local para acciones de Streamer.bot
     def restart_http(self):
@@ -708,6 +962,8 @@ class Engine:
             return
         app = web.Application()
         app.router.add_route("*", "/speak", self._h_speak)
+        app.router.add_get("/overlay", self._h_overlay)
+        app.router.add_get("/overlay/ws", self._h_overlay_ws)
         for path, fn in (("/skip", self.skip), ("/clear", self.clear),
                          ("/pause", lambda: self.set_paused(True)), ("/resume", lambda: self.set_paused(False)),
                          ("/toggle", lambda: self.set_paused(not self.paused))):
@@ -773,10 +1029,11 @@ class App:
         self.http_status = tk.StringVar(value="")
         self.queue_status = tk.StringVar()
         self.pause_text = tk.StringVar()
-        self.url_speak, self.url_ctl = tk.StringVar(), tk.StringVar()
+        self.url_speak, self.url_ctl, self.url_overlay = tk.StringVar(), tk.StringVar(), tk.StringVar()
         self.var("http_port").trace_add("write", self.update_urls)
         self.build()
         root.deiconify()
+        self.tray = self._start_tray()
 
         root.bind_all("<Control-q>", lambda _: self.open_queue())
         root.bind_all("<Control-p>", lambda _: self.toggle_pause())
@@ -1004,6 +1261,12 @@ class App:
                     self.pause_text.set(tr("▶ Resume") if val else tr("⏸ Pause"))
                 elif kind == "voices":
                     self._voices_loaded()
+                elif kind == "user_voices":  # un viewer eligió voz con el comando
+                    t = self.texts["user_voices"]
+                    t.delete("1.0", "end")
+                    t.insert("1.0", val)
+                elif kind == "tray":
+                    self._tray_action(val)
         except queue.Empty:
             pass
         self.root.after(100, self._pump)
@@ -1158,6 +1421,16 @@ class App:
         ttk.Label(opts, text=tr("Double-click/Enter: use · Space: listen · F: favorite"),
                   style="Hint.TLabel").pack(side="right")
 
+        cmd = ttk.Frame(f)
+        cmd.pack(fill="x", pady=(6, 0))
+        ttk.Checkbutton(cmd, text=tr("Viewers can choose their voice with"),
+                        variable=self.var("voice_cmd_enabled")).pack(side="left")
+        ttk.Entry(cmd, textvariable=self.var("voice_command"), width=14).pack(side="left", padx=4)
+        ttk.Checkbutton(cmd, text=tr("Reply in chat (needs the Streamer.bot password)"),
+                        variable=self.var("voice_cmd_reply")).pack(side="left", padx=8)
+        ttk.Label(f, text=tr("Only your favorite voices. Example: !voice dalia · !voice off"),
+                  style="Hint.TLabel").pack(anchor="w")
+
     def reload_voices(self):
         def done(fut):
             try:
@@ -1258,7 +1531,7 @@ class App:
         self.row(g, 3, "", ttk.Checkbutton(g, text=tr("Ignore commands (messages starting with !)"),
                                            variable=self.var("skip_commands")))
         self.row(g, 4, "", ttk.Checkbutton(g, text=tr(
-            "Don't read channel point and bits messages from chat (the Streamer.bot actions read them)"),
+            "Don't read channel points and bits from chat (the Streamer.bot actions read them)"),
             variable=self.var("skip_rewards_bits")))
         self.row(g, 5, tr("Who can use it"), self.choice(g, "min_role", ROLE_LABELS))
         self.row(g, 6, "", ttk.Checkbutton(g, text=tr("Remove emotes"), variable=self.var("remove_emotes")))
@@ -1270,6 +1543,12 @@ class App:
                  ttk.Spinbox(g, from_=0, to=2000, textvariable=self.var("max_chars")), tr("0 = no limit"))
         self.row(g, 10, tr("Max queued messages"),
                  ttk.Spinbox(g, from_=0, to=500, textvariable=self.var("max_queue")), tr("0 = no limit"))
+        self.row(g, 11, tr("Seconds between messages per user"),
+                 ttk.Spinbox(g, from_=0, to=600, textvariable=self.var("user_cooldown")),
+                 tr("0 = no limit · mods and broadcaster are exempt"))
+        self.row(g, 12, tr("Max queued messages per user"),
+                 ttk.Spinbox(g, from_=0, to=50, textvariable=self.var("max_per_user")),
+                 tr("0 = no limit · mods and broadcaster are exempt"))
 
         boxes = ttk.Frame(f)
         boxes.pack(fill="both", expand=True, pady=(10, 0))
@@ -1318,10 +1597,20 @@ class App:
             "The controls work with hotkeys or a Stream Deck. Only listens on 127.0.0.1 (this PC).")
         ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
+        ov = ttk.LabelFrame(f, text=tr("OBS overlay"), padding=8)
+        ov.pack(fill="x")
+        ov.columnconfigure(1, weight=1)
+        self.row(ov, 0, "URL", ttk.Entry(ov, textvariable=self.url_overlay, state="readonly"))
+        ttk.Label(ov, style="Hint.TLabel", justify="left", text=tr(
+            "Add it in OBS as a Browser source (for example 800×300). Optional URL parameters:\n"
+            "size (font px), hold (seconds visible after reading).")
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
     def update_urls(self, *_):
         base = f"http://127.0.0.1:{self.cfg['http_port']}"
         self.url_speak.set(f"{base}/speak?user=%user%&text=%rawInputUrlEncoded%")
         self.url_ctl.set(f"{base}/skip  ·  /clear  ·  /pause  ·  /resume  ·  /toggle")
+        self.url_overlay.set(f"{base}/overlay")
 
     # --- pestaña avanzado
     def _tab_advanced(self, nb):
@@ -1344,6 +1633,9 @@ class App:
         ttk.Entry(nf, textvariable=self.var("now_file")).pack(side="left", fill="x", expand=True)
         ttk.Button(nf, text="…", width=3, command=self.pick_now_file).pack(side="left", padx=4)
         self.row(app, 5, tr("File"), nf)
+        if pystray:
+            self.row(app, 6, "", ttk.Checkbutton(app, text=tr(
+                "Close to the system tray (keep reading in the background)"), variable=self.var("close_to_tray")))
 
         tts = ttk.LabelFrame(f, text="edge-tts", padding=8)
         tts.pack(fill="x", pady=10)
@@ -1443,9 +1735,54 @@ class App:
         self.engine.remove(lambda item: item["user"].lower() in users)
         self.log(tr("Ignored from now on: {users}", users=", ".join(sorted(users))))
 
+    # --- bandeja del sistema
+    def _start_tray(self):
+        if not pystray or not ICON_PATH.exists():
+            return None
+
+        def send(action):  # pystray llama desde su propio hilo: Tk solo se toca desde _pump
+            return lambda *_: self.events.put(("tray", action))
+        menu = pystray.Menu(pystray.MenuItem(tr("Show window"), send("show"), default=True),
+                            pystray.MenuItem(tr("Pause / resume"), send("pause")),
+                            pystray.MenuItem(tr("⏭ Skip"), send("skip")),
+                            pystray.MenuItem(tr("🗑 Clear queue"), send("clear")),
+                            pystray.MenuItem(tr("Quit"), send("quit")))
+        try:
+            icon = pystray.Icon("stream_tts", Image.open(ICON_PATH), "Stream TTS", menu)
+            icon.run_detached()
+            return icon
+        except Exception as e:
+            self.log(tr("Error: {err}", err=e))
+            return None
+
+    def _tray_action(self, action):
+        if action == "show":
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+        elif action == "pause":
+            self.toggle_pause()
+        elif action == "skip":
+            self.engine.skip()
+        elif action == "clear":
+            self.engine.clear()
+        elif action == "quit":
+            self.quit()
+
     def close(self):
-        self.cfg["geometry"] = self.root.geometry()
+        if self.tray and self.cfg["close_to_tray"]:
+            self.cfg["geometry"] = self.root.geometry()
+            self.save()
+            self.root.withdraw()
+        else:
+            self.quit()
+
+    def quit(self):
+        if self.root.state() != "withdrawn":
+            self.cfg["geometry"] = self.root.geometry()
         self.save()
+        if self.tray:
+            self.tray.stop()
         self.root.destroy()
 
 
