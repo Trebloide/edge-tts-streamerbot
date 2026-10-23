@@ -697,6 +697,7 @@ class Engine:
         self._sb_task = None
         self._ws = None
         self._reply_warned = False
+        self._own_replies = deque(maxlen=20)  # (texto, momento) de respuestas al comando de voz, para no leerlas
         self._http_runner = None
         self._overlay_clients = set()
         self.loop = asyncio.new_event_loop()
@@ -972,6 +973,20 @@ class Engine:
 
     def _voice_cmd(self, user, login, arg):
         """Cambia la voz del viewer y devuelve la respuesta para el chat ('' si el usuario está ignorado)."""
+        msg = self._voice_answer(user, login, arg)
+        if msg:  # la respuesta vuelve por el chat desde la cuenta del streamer o del bot
+            self._own_replies.append((msg.strip().lower(), time.monotonic()))
+        return msg
+
+    def _is_own_reply(self, text):
+        t, now = text.strip().lower(), time.monotonic()
+        for item in list(self._own_replies):
+            if item[0] == t and now - item[1] < 60:
+                self._own_replies.remove(item)
+                return True
+        return False
+
+    def _voice_answer(self, user, login, arg):
         if not login or login.lower() in {u.lower().lstrip("@") for u in lines(self.cfg["ignored_users"])}:
             return ""
         favs = self.cfg["favorites"]
@@ -1017,6 +1032,8 @@ class Engine:
 
     def _chat(self, platform, data):
         user, login, text, role, sub, _ = parse_chat(data)
+        if self._is_own_reply(text):
+            return
         arg = voice_command(self.cfg, text)
         if arg is not None:
             self._reply(platform, self._voice_cmd(user, login, arg))
