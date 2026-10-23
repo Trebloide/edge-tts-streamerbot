@@ -965,31 +965,31 @@ class Engine:
 
     def _reply(self, platform, message):
         """Responde en el chat (SendMessage de Streamer.bot, que exige contraseña)."""
-        if self.cfg["voice_cmd_reply"] and self._ws is not None:
+        if message and self.cfg["voice_cmd_reply"] and self._ws is not None:
             self.loop.create_task(self._ws.send_json({"request": "SendMessage", "id": "tts-reply",
                                                       "platform": platform.lower(), "bot": False,
                                                       "internal": False, "message": message}))
 
-    def _voice_cmd(self, platform, user, login, arg):
+    def _voice_cmd(self, user, login, arg):
+        """Cambia la voz del viewer y devuelve la respuesta para el chat ('' si el usuario está ignorado)."""
+        if not login or login.lower() in {u.lower().lstrip("@") for u in lines(self.cfg["ignored_users"])}:
+            return ""
         favs = self.cfg["favorites"]
         names = ", ".join(voice_alias(v) for v in favs)
-        cmd = self.cfg["voice_command"].replace(",", " ").split()[0]
+        cmd = (self.cfg["voice_command"].replace(",", " ").split() or ["!voice"])[0]
         if not favs:
-            self._reply(platform, tr("@{user} there are no voices to choose from yet.", user=user))
-            return
+            return tr("@{user} there are no voices to choose from yet.", user=user)
         if not arg:
-            self._reply(platform, tr("@{user} voices: {names}. Use {cmd} <name> ({cmd} off to reset).",
-                                     user=user, names=names, cmd=cmd))
-            return
+            return tr("@{user} voices: {names}. Use {cmd} <name> ({cmd} off to reset).",
+                      user=user, names=names, cmd=cmd)
         voice = None if arg.lower() in ("off", "reset", "default") else find_voice(favs, arg)
         if voice is None and arg.lower() not in ("off", "reset", "default"):
-            self._reply(platform, tr("@{user} unknown voice. Available: {names}", user=user, names=names))
-            return
+            return tr("@{user} unknown voice. Available: {names}", user=user, names=names)
         self.cfg["user_voices"] = set_user_voice(self.cfg["user_voices"], login, voice)
         self.emit("user_voices", self.cfg["user_voices"])
         shown = voice_alias(voice) if voice else tr("default")
         self.log(tr("{user} chose the voice {voice}", user=login, voice=voice or tr("default")))
-        self._reply(platform, tr("@{user} your voice is now {voice}.", user=user, voice=shown))
+        return tr("@{user} your voice is now {voice}.", user=user, voice=shown)
 
     def _sb_message(self, d):
         if d.get("id") in ("tts-auth", "tts-sub", "tts-sub-kick", "tts-reply") and d.get("status") == "error":
@@ -1019,8 +1019,7 @@ class Engine:
         user, login, text, role, sub, _ = parse_chat(data)
         arg = voice_command(self.cfg, text)
         if arg is not None:
-            if login and login.lower() not in {u.lower().lstrip("@") for u in lines(self.cfg["ignored_users"])}:
-                self._voice_cmd(platform, user, login, arg)
+            self._reply(platform, self._voice_cmd(user, login, arg))
             return
         speech, voice, login, why = chat_speech(self.cfg, data, self.last_user)
         if speech is None:
@@ -1052,6 +1051,7 @@ class Engine:
             return
         app = web.Application()
         app.router.add_route("*", "/speak", self._h_speak)
+        app.router.add_route("*", "/voice", self._h_voice)
         app.router.add_get("/overlay", self._h_overlay)
         app.router.add_get("/overlay/ws", self._h_overlay_ws)
         for path, fn in (("/skip", self.skip), ("/clear", self.clear),
@@ -1088,6 +1088,12 @@ class Engine:
             return web.Response(text=f"ignored: {why}")
         self._enqueue(speech, voice, user)
         return web.Response(text="ok")
+
+    async def _h_voice(self, req):
+        """Comando de voz desde Streamer.bot: devuelve la respuesta y la acción la manda al chat."""
+        p = dict(req.query)
+        login = p.get("user", "").strip().lstrip("@")
+        return web.Response(text=self._voice_cmd(p.get("name") or login, login, p.get("voice", "").strip()))
 
 
 # ---------------------------------------------------------------- interfaz

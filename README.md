@@ -62,6 +62,7 @@ Viewers can pick their own voice from chat, from your **favorite** voices only:
 - The choice is saved in **Voice per user**, so it survives restarts.
 - Voice names are the short names, such as `Dalia`, `Alvaro` or `Ava`. The first letters are enough.
 - **Chat replies:** the app can answer in chat (for example "your voice is now Dalia"). Streamer.bot only allows this with authentication: turn it on in the WebSocket Server and enter the password in **Connection**. Without it, the command still works, just silently.
+- **With Streamer.bot instead:** import [`tts-twitch-voice.txt`](streamerbot/tts-twitch-voice.txt) or [`tts-kick-voice.txt`](streamerbot/tts-kick-voice.txt). Streamer.bot then answers in chat without the password, and you can also let viewers pick their voice with a channel point reward. Turn off **Viewers can choose their voice** in the **Voices** tab, or the app answers too.
 
 ## OBS overlay
 
@@ -114,9 +115,9 @@ The app shows an icon in the system tray. From it you can show the window, pause
 
 To keep the app reading when you close the window, turn on **Close to the system tray** in **Advanced**. To fully exit, use **Quit** in the tray menu.
 
-## Streamer.bot actions: !tts, channel points, bits, Kicks and mod commands (optional)
+## Streamer.bot actions: !tts, channel points, bits, Kicks, mod commands and voice choice (optional)
 
-The [`streamerbot/`](streamerbot/) folder has eight ready-to-import files. Each one is separate, so import only the ones you need.
+The [`streamerbot/`](streamerbot/) folder has ten ready-to-import files. Each one is separate, so import only the ones you need.
 
 ### Twitch
 
@@ -126,6 +127,7 @@ The [`streamerbot/`](streamerbot/) folder has eight ready-to-import files. Each 
 | [`tts-twitch-channel-points.txt`](streamerbot/tts-twitch-channel-points.txt) | The text a viewer types when redeeming a reward | Twitch → Channel Reward → Reward Redemption | Pick your reward in the trigger. |
 | [`tts-twitch-bits.txt`](streamerbot/tts-twitch-bits.txt) | The message of a cheer, without the cheermotes | Twitch → Chat → Cheer | Set `minBits` (default `100`). |
 | [`tts-twitch-mod-commands.txt`](streamerbot/tts-twitch-mod-commands.txt) | Mod commands (see below) | `!ttsskip`, `!ttsclear`, `!ttspause` (included) | Nothing to do. |
+| [`tts-twitch-voice.txt`](streamerbot/tts-twitch-voice.txt) | A viewer picks their voice (see below) | `!voice` and `!voz` (included), and a channel reward | Turn off **Viewers can choose their voice** in the app. For the reward, pick it in the trigger. |
 
 ### Kick
 
@@ -135,6 +137,7 @@ The [`streamerbot/`](streamerbot/) folder has eight ready-to-import files. Each 
 | [`tts-kick-channel-points.txt`](streamerbot/tts-kick-channel-points.txt) | The text a viewer types when redeeming a reward | Kick → Channel Reward → Reward Redemption | Pick your reward in the trigger. |
 | [`tts-kick-kicks.txt`](streamerbot/tts-kick-kicks.txt) | The message sent with Kicks | Kick → Kicks → Gifted | Set `minKicks` (default `100`). |
 | [`tts-kick-mod-commands.txt`](streamerbot/tts-kick-mod-commands.txt) | Mod commands (see below) | `!ttsskip`, `!ttsclear`, `!ttspause` (included, Kick chat source) | Nothing to do. |
+| [`tts-kick-voice.txt`](streamerbot/tts-kick-voice.txt) | A viewer picks their voice (see below) | `!voice` and `!voz` (included, Kick chat source), and a channel reward | Turn off **Viewers can choose their voice** in the app. For the reward, pick it in the trigger. |
 
 Kick actions need Streamer.bot 1.0.2 or later.
 
@@ -149,6 +152,17 @@ You can import the Twitch and Kick files together. Commands with the same name d
 | `!ttspause` | Pauses or resumes reading. |
 
 Only moderators and the broadcaster can use them. For anyone else they do nothing.
+
+### Choosing a voice
+
+Each voice file has two actions:
+
+- **!voice command:** `!voice dalia`, `!voice` to list the voices and `!voice off` to go back to the default one. `!voz` works the same.
+- **Channel points: choose voice:** the viewer types the voice name when redeeming. Create the reward with text input and pick it in the trigger. If you don't want it, delete or disable this action.
+
+Both work like the app's own command: only your **favorite** voices, saved in **Voice per user**. Streamer.bot sends the answer to chat ("your voice is now Dalia") without the WebSocket password. Set `voiceReply` to `false` to stay silent.
+
+Turn off **Viewers can choose their voice** in the app's **Voices** tab. Otherwise the app also answers the command.
 
 ### Importing
 
@@ -166,7 +180,8 @@ The actions appear in the **TTS (edge-tts)** group. The commands appear in **Com
 | Comment | Explains what to change. |
 | Set Argument `minBits` / `minKicks` | Bits and Kicks actions only. Messages with fewer bits or Kicks are not read. |
 | Set Argument `ttsPort` | Port of the app's HTTP server (default `7979`). |
-| Execute C# Code | Sends the user and the text to the app's `/speak`, URL-encoded, or calls `/skip`, `/clear` or `/toggle` for the mod commands. If the app is closed, it writes a warning to the Streamer.bot log. |
+| Set Argument `voiceReply` | Voice actions only. `true` answers in chat, `false` stays silent. |
+| Execute C# Code | Sends the user and the text to the app's `/speak`, URL-encoded, calls `/skip`, `/clear` or `/toggle` for the mod commands, or calls `/voice` and sends its answer to chat. If the app is closed, it writes a warning to the Streamer.bot log. |
 
 To change a value, double-click the **Set Argument** sub-action and edit **Value**. For example, set `minBits` to `500`.
 
@@ -206,6 +221,7 @@ The app also runs a local HTTP server. It listens only on `127.0.0.1`, port `797
 | URL | What it does |
 |---|---|
 | `/speak?text=...&user=...&voice=...` | Reads the text. `user` and `voice` are optional. |
+| `/voice?user=...&name=...&voice=...` | Sets the voice of `user` (login) from your favorites, like `!voice`. Answers with the chat reply, addressed to `name`. |
 | `/skip` | Stops the current message. |
 | `/clear` | Empties the queue. |
 | `/pause`, `/resume`, `/toggle` | Pauses, resumes or toggles reading. |

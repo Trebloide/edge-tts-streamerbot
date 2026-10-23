@@ -62,6 +62,7 @@ Los viewers pueden elegir su voz desde el chat, solo entre tus voces **favoritas
 - La elección se guarda en **Voz por usuario**, así que se mantiene al reiniciar.
 - Las voces se nombran por su nombre corto, como `Dalia`, `Alvaro` o `Ava`. Basta con las primeras letras.
 - **Respuestas en el chat:** la app puede contestar en el chat (por ejemplo "ahora tu voz es Dalia"). Streamer.bot solo lo permite con autenticación: actívala en el WebSocket Server y pon la contraseña en **Conexión**. Sin ella el comando funciona igual, solo que sin contestar.
+- **Con Streamer.bot:** importa [`tts-twitch-voice.txt`](streamerbot/tts-twitch-voice.txt) o [`tts-kick-voice.txt`](streamerbot/tts-kick-voice.txt). Así Streamer.bot contesta en el chat sin contraseña, y además puedes dejar elegir voz con un canje de puntos del canal. Desactiva **Los viewers pueden elegir su voz** en la pestaña **Voces** o contestará también la app.
 
 ## Overlay para OBS
 
@@ -114,9 +115,9 @@ La app pone un icono en la bandeja del sistema. Desde él puedes mostrar la vent
 
 Para que la app siga leyendo al cerrar la ventana, activa **Cerrar a la bandeja del sistema** en **Avanzado**. Para salir del todo, usa **Salir** en el menú de la bandeja.
 
-## Acciones de Streamer.bot: !tts, puntos del canal, bits, Kicks y comandos de mods (opcional)
+## Acciones de Streamer.bot: !tts, puntos del canal, bits, Kicks, comandos de mods y elegir voz (opcional)
 
-La carpeta [`streamerbot/`](streamerbot/) trae ocho archivos listos para importar. Van por separado, así que importa solo los que quieras.
+La carpeta [`streamerbot/`](streamerbot/) trae diez archivos listos para importar. Van por separado, así que importa solo los que quieras.
 
 ### Twitch
 
@@ -126,6 +127,7 @@ La carpeta [`streamerbot/`](streamerbot/) trae ocho archivos listos para importa
 | [`tts-twitch-channel-points.txt`](streamerbot/tts-twitch-channel-points.txt) | El texto que escribe el viewer al canjear una recompensa | Twitch → Channel Reward → Reward Redemption | Elige tu recompensa en el trigger. |
 | [`tts-twitch-bits.txt`](streamerbot/tts-twitch-bits.txt) | El mensaje de un cheer, sin los cheermotes | Twitch → Chat → Cheer | Ajusta `minBits` (por defecto `100`). |
 | [`tts-twitch-mod-commands.txt`](streamerbot/tts-twitch-mod-commands.txt) | Comandos de mods (ver abajo) | `!ttsskip`, `!ttsclear`, `!ttspause` (incluidos) | No hay que hacer nada. |
+| [`tts-twitch-voice.txt`](streamerbot/tts-twitch-voice.txt) | El viewer elige su voz (ver abajo) | `!voice` y `!voz` (incluidos) y un canje de puntos | Desactiva **Los viewers pueden elegir su voz** en la app. Para el canje, elige la recompensa en el trigger. |
 
 ### Kick
 
@@ -135,6 +137,7 @@ La carpeta [`streamerbot/`](streamerbot/) trae ocho archivos listos para importa
 | [`tts-kick-channel-points.txt`](streamerbot/tts-kick-channel-points.txt) | El texto que escribe el viewer al canjear una recompensa | Kick → Channel Reward → Reward Redemption | Elige tu recompensa en el trigger. |
 | [`tts-kick-kicks.txt`](streamerbot/tts-kick-kicks.txt) | El mensaje que acompaña a los Kicks | Kick → Kicks → Gifted | Ajusta `minKicks` (por defecto `100`). |
 | [`tts-kick-mod-commands.txt`](streamerbot/tts-kick-mod-commands.txt) | Comandos de mods (ver abajo) | `!ttsskip`, `!ttsclear`, `!ttspause` (incluidos, con el chat de Kick como fuente) | No hay que hacer nada. |
+| [`tts-kick-voice.txt`](streamerbot/tts-kick-voice.txt) | El viewer elige su voz (ver abajo) | `!voice` y `!voz` (incluidos, con el chat de Kick como fuente) y un canje de puntos | Desactiva **Los viewers pueden elegir su voz** en la app. Para el canje, elige la recompensa en el trigger. |
 
 Las acciones de Kick necesitan Streamer.bot 1.0.2 o posterior.
 
@@ -149,6 +152,17 @@ Puedes importar a la vez los archivos de Twitch y los de Kick. Los comandos con 
 | `!ttspause` | Pausa o reanuda la lectura. |
 
 Solo los pueden usar los moderadores y el streamer. Para el resto no hacen nada.
+
+### Elegir voz
+
+Cada archivo de voz trae dos acciones:
+
+- **Comando !voice:** `!voz dalia`, `!voz` para ver la lista de voces y `!voz off` para volver a la de siempre. `!voice` funciona igual.
+- **Puntos del canal: elegir voz:** el viewer escribe el nombre de la voz al canjear. Crea la recompensa con texto y elígela en el trigger. Si no la quieres, borra o desactiva esta acción.
+
+Las dos funcionan como el comando de la app: solo tus voces **favoritas**, y se guardan en **Voz por usuario**. Streamer.bot manda la respuesta al chat ("ahora tu voz es Dalia") sin necesitar la contraseña del WebSocket. Pon `voiceReply` a `false` para que no conteste.
+
+Desactiva **Los viewers pueden elegir su voz** en la pestaña **Voces** de la app. Si no, la app también contesta al comando.
 
 ### Importar
 
@@ -166,7 +180,8 @@ Las acciones aparecen en el grupo **TTS (edge-tts)**. Los comandos aparecen en *
 | Comment | Explica qué hay que cambiar. |
 | Set Argument `minBits` / `minKicks` | Solo en las acciones de bits y Kicks. Los mensajes con menos bits o Kicks no se leen. |
 | Set Argument `ttsPort` | Puerto del servidor HTTP de la app (por defecto `7979`). |
-| Execute C# Code | Envía el usuario y el texto a `/speak` de la app, codificados para URL, o llama a `/skip`, `/clear` o `/toggle` en los comandos de mods. Si la app está cerrada, deja un aviso en el registro de Streamer.bot. |
+| Set Argument `voiceReply` | Solo en las acciones de voz. `true` contesta en el chat, `false` no dice nada. |
+| Execute C# Code | Envía el usuario y el texto a `/speak` de la app, codificados para URL, llama a `/skip`, `/clear` o `/toggle` en los comandos de mods, o llama a `/voice` y manda su respuesta al chat. Si la app está cerrada, deja un aviso en el registro de Streamer.bot. |
 
 Para cambiar un valor, haz doble clic en la sub-acción **Set Argument** y edita **Value**. Por ejemplo, pon `minBits` a `500`.
 
@@ -206,6 +221,7 @@ La app también abre un servidor HTTP local (solo `127.0.0.1`, puerto `7979`):
 | URL | Qué hace |
 |---|---|
 | `/speak?text=...&user=...&voice=...` | Lee el texto. `user` y `voice` son opcionales. |
+| `/voice?user=...&name=...&voice=...` | Pone la voz de `user` (login) entre tus favoritas, como `!voz`. Devuelve la respuesta para el chat, dirigida a `name`. |
 | `/skip` | Corta el mensaje actual. |
 | `/clear` | Vacía la cola. |
 | `/pause`, `/resume`, `/toggle` | Pausa, reanuda o alterna la lectura. |

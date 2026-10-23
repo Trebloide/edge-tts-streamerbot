@@ -63,19 +63,26 @@ public class CPHInline
 
     private bool Call(string pathAndQuery)
     {
+        Fetch(pathAndQuery);
+        return true;
+    }
+
+    // Respuesta de la app, o null si no contesta
+    private string Fetch(string pathAndQuery)
+    {
         try
         {
             using (WebClient client = new WebClient())
             {
                 client.Encoding = Encoding.UTF8;
-                client.DownloadString("http://127.0.0.1:" + GetInt("ttsPort", 7979) + pathAndQuery);
+                return client.DownloadString("http://127.0.0.1:" + GetInt("ttsPort", 7979) + pathAndQuery);
             }
         }
         catch (Exception e)
         {
             CPH.LogWarn("[TTS] The TTS app did not answer (is it open?): " + e.Message);
+            return null;
         }
-        return true;
     }
 }
 """
@@ -96,6 +103,16 @@ BODIES = {
         // rawInput = mensaje que acompaña a los Kicks
         return Speak(GetArg("rawInput", ""));""",
 }
+# Elegir voz: la app cambia la voz del viewer y devuelve la respuesta, que se manda al chat
+for platform, send in (("twitch", "CPH.SendMessage(reply)"), ("kick", "CPH.SendKickMessage(reply)")):
+    BODIES["voice_" + platform] = f"""        // rawInput = voz pedida (vacío = lista de voces, off = volver a la normal)
+        string login = GetArg("userName", GetArg("user", ""));
+        string reply = Fetch("/voice?user=" + Uri.EscapeDataString(login)
+            + "&name=" + Uri.EscapeDataString(GetArg("user", login))
+            + "&voice=" + Uri.EscapeDataString(GetArg("rawInput", "")));
+        if (!string.IsNullOrEmpty(reply) && GetArg("voiceReply", "true").ToLowerInvariant() == "true")
+            {send};
+        return true;"""
 # Comandos de moderación: solo mods y el streamer; llaman a los controles de la app
 MOD_COMMANDS = [("!ttsskip", "skip", "/skip"), ("!ttsclear", "clear", "/clear"), ("!ttspause", "pause", "/toggle")]
 for _, kind, path in MOD_COMMANDS:
@@ -190,6 +207,29 @@ def mod_commands_file(platform):
            f"!ttsskip, !ttsclear and !ttspause for {platform} moderators.", actions, commands)
 
 
+VOICE_NOTE = ("Turn off 'Viewers can choose their voice' in the app's Voices tab, or it answers twice. / "
+              "Desactiva 'Los viewers pueden elegir su voz' en la pestaña Voces de la app o contestará dos veces.")
+REPLY_NOTE = "voiceReply = true: answer in chat / responder en el chat (false = silent / sin respuesta)."
+
+
+def voice_file(platform, reward_type):
+    """!voice/!voz y un canje de puntos para que el viewer elija su voz entre tus favoritas."""
+    commands = [command(platform, text) for text in ("!voice", "!voz")]
+    setup = [comment(VOICE_NOTE, 0), comment(PORT_NOTE, 1), set_arg("ttsPort", "7979", 2),
+             comment(REPLY_NOTE, 3), set_arg("voiceReply", "true", 4)]
+    kind = "voice_" + platform.lower()
+    actions = [
+        action(f"TTS · {platform} · !voice command",
+               setup + [csharp(kind, 5)], [trigger(401, commandId=c["id"]) for c in commands]),
+        action(f"TTS · {platform} · Channel points: choose voice",
+               [comment(REWARD_NOTE, 0)] + [{**x, "id": uid(), "index": x["index"] + 1} for x in setup]
+               + [csharp(kind, 6)], [trigger(reward_type, rewardId=None)]),
+    ]
+    export(OUT / f"tts-{platform.lower()}-voice.txt", f"TTS · {platform} · Choose voice",
+           f"!voice / !voz and a channel point reward so {platform} viewers pick their TTS voice "
+           "from your favorites.", actions, commands)
+
+
 def reward_file(platform, trigger_type):
     name = f"TTS · {platform} · Channel points"
     export(OUT / f"tts-{platform.lower()}-channel-points.txt", name,
@@ -209,9 +249,11 @@ def build():
                     comment(PORT_NOTE, 2), set_arg("ttsPort", "7979", 3), csharp("bits", 4)],
                    [trigger(102, min=-1, max=-1)])])
     mod_commands_file("Twitch")
+    voice_file("Twitch", 112)
 
     command_file("Kick")
     mod_commands_file("Kick")
+    voice_file("Kick", 35024)
     reward_file("Kick", 35024)
     export(OUT / "tts-kick-kicks.txt", "TTS · Kick · Kicks", "Reads Kicks gift messages with at least minKicks Kicks.",
            [action("TTS · Kick · Kicks",
